@@ -54,12 +54,6 @@ Open the admin **Dashboard** and tap **Seed demo lot if empty**. Green/red pins 
 
 ## Google Maps keys
 
-Maps SDK keys were not available at scaffold time. Until you add them:
-
-- **iOS Simulator** uses Apple Maps (`PROVIDER_DEFAULT`) and still shows pins + navigation via the Maps app
-- **Android** needs a Maps SDK key in `.env` for the in-app Google Map
-- Turn-by-turn inside the app uses Directions API when `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY` is set; otherwise a straight-line preview + **Open in Maps** is used
-
 Add keys to `.env`, then rebuild a [development build](https://docs.expo.dev/develop/development-builds/introduction/) so native Google Maps config is applied:
 
 ```
@@ -68,7 +62,20 @@ EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_KEY=
 EXPO_PUBLIC_GOOGLE_MAPS_IOS_KEY=
 ```
 
-Enable in Google Cloud: Maps SDK for Android, Maps SDK for iOS, Directions API. Restrict keys to `com.parksense.app`.
+Enable in Google Cloud:
+
+- **Maps SDK for Android** → use `EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_KEY` (restrict to package `com.parksense.app`)
+- **Maps SDK for iOS** → use `EXPO_PUBLIC_GOOGLE_MAPS_IOS_KEY` (restrict to bundle `com.parksense.app`)
+- **Directions API** → use `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY`
+
+Important for in-app turn guidance + ETA:
+
+- Create a **separate** key for Directions (do not reuse an Android/iOS app-restricted SDK key)
+- API restriction: **Directions API** only
+- Application restriction: **None** (FYP / student demo). App-restricted keys return `REQUEST_DENIED` for the Directions REST call and the app falls back to a straight line
+- Restart Expo after changing `.env` (`pnpm start -c`)
+
+Without a working Directions key you still get pins + **Start guidance** map-follow + optional Apple/Google Maps.
 
 ## Scripts
 

@@ -98,6 +98,15 @@ export function AdminSensorsScreen() {
     const next = current === 'Faulty' ? 'Simulated' : 'Faulty';
     const slot = slotById[slotId];
     const slotNumber = slot?.slotNumber ?? slotId;
+
+    if (next === 'Faulty' && slot?.status === 'Occupied') {
+      Alert.alert(
+        'Can’t mark faulty while occupied',
+        `${slotNumber} is currently taken. Ask the driver to leave (or mark the slot available on Slots) before taking this sensor offline.`,
+      );
+      return;
+    }
+
     setBusyId(sensorId);
     try {
       await setSensorStatus(sensorId, next);
@@ -156,7 +165,10 @@ export function AdminSensorsScreen() {
         }
         renderItem={({ item }) => {
           const faulty = item.sensorStatus === 'Faulty';
-          const slotNumber = slotById[item.slotId]?.slotNumber ?? item.slotId;
+          const slot = slotById[item.slotId];
+          const slotNumber = slot?.slotNumber ?? item.slotId;
+          const occupied = slot?.status === 'Occupied';
+          const blockFaulty = !faulty && occupied;
           return (
             <GlassCard style={styles.card}>
               <View style={[styles.accent, faulty ? styles.accentBad : styles.accentOk]} />
@@ -173,7 +185,9 @@ export function AdminSensorsScreen() {
                     <View style={styles.copy}>
                       <Text style={styles.slotTitle}>{slotNumber}</Text>
                       <Text style={styles.meta}>
-                        {item.sensorType} · updated{' '}
+                        {item.sensorType}
+                        {occupied ? ' · occupied' : ' · open'}
+                        {' · updated '}
                         {new Date(item.lastUpdated).toLocaleString([], {
                           month: 'short',
                           day: 'numeric',
@@ -184,8 +198,8 @@ export function AdminSensorsScreen() {
                     </View>
                   </View>
                   <StatusBadge
-                    label={faulty ? 'Sensor offline' : 'Healthy'}
-                    tone={faulty ? 'warning' : 'available'}
+                    label={faulty ? 'Sensor offline' : occupied ? 'In use' : 'Healthy'}
+                    tone={faulty ? 'warning' : occupied ? 'occupied' : 'available'}
                   />
                 </View>
                 {faulty ? (
@@ -195,10 +209,18 @@ export function AdminSensorsScreen() {
                     </Text>
                   </View>
                 ) : null}
+                {blockFaulty ? (
+                  <View style={styles.hint}>
+                    <Text style={styles.hintText}>
+                      A driver may be parked here. Free the slot first, then mark the sensor faulty.
+                    </Text>
+                  </View>
+                ) : null}
                 <Button
                   title={faulty ? 'Mark healthy' : 'Mark faulty'}
                   variant={faulty ? 'primary' : 'secondary'}
                   loading={busyId === item.sensorId}
+                  disabled={blockFaulty}
                   onPress={() => void toggleFault(item.sensorId, item.sensorStatus, item.slotId)}
                   style={styles.action}
                 />

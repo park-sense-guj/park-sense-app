@@ -23,21 +23,8 @@ export const darkMapStyle: MapStyleElement[] = [
     elementType: 'labels.text.fill',
     stylers: [{ color: '#c9ddd8' }],
   },
-  {
-    featureType: 'poi',
-    elementType: 'labels.text.fill',
-    stylers: [{ color: '#8aa39d' }],
-  },
-  {
-    featureType: 'poi.park',
-    elementType: 'geometry',
-    stylers: [{ color: '#1a332e' }],
-  },
-  {
-    featureType: 'poi.park',
-    elementType: 'labels.text.fill',
-    stylers: [{ color: '#6f9e8f' }],
-  },
+  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
   {
     featureType: 'road',
     elementType: 'geometry',
@@ -69,16 +56,6 @@ export const darkMapStyle: MapStyleElement[] = [
     stylers: [{ color: '#d0e4de' }],
   },
   {
-    featureType: 'transit',
-    elementType: 'geometry',
-    stylers: [{ color: '#243632' }],
-  },
-  {
-    featureType: 'transit.station',
-    elementType: 'labels.text.fill',
-    stylers: [{ color: '#8aa39d' }],
-  },
-  {
     featureType: 'water',
     elementType: 'geometry',
     stylers: [{ color: '#0f1c24' }],
@@ -90,4 +67,8 @@ export const darkMapStyle: MapStyleElement[] = [
   },
 ];
 
-export const lightMapStyle: MapStyleElement[] = [];
+/** Hide POI icons/labels so they don't steal taps from parking pins (Google Maps). */
+export const lightMapStyle: MapStyleElement[] = [
+  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+];

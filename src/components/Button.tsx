@@ -39,6 +39,7 @@ function ButtonComponent({
       StyleSheet.create({
         base: {
           minHeight: 52,
+          width: '100%',
           borderRadius: radius.md,
           alignItems: 'center',
           justifyContent: 'center',

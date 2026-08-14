@@ -1,13 +1,15 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useCallback, useMemo, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import MapView, { PROVIDER_DEFAULT } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { initialsFromName } from '../../components/Avatar';
 import { BrandHeader } from '../../components/BrandHeader';
 import { Button } from '../../components/Button';
+import { ParkingMarker } from '../../components/ParkingMarker';
 import { Screen } from '../../components/Screen';
 import { StatusBadge } from '../../components/StatusBadge';
 import { darkMapStyle, lightMapStyle } from '../../config/mapStyles';
@@ -16,7 +18,6 @@ import { DEMO_LOT } from '../../data/demoLot';
 import { useNotifications } from '../../hooks/useNotifications';
 import { useParkingHistory } from '../../hooks/useParkingHistory';
 import { useParkingSlots } from '../../hooks/useParkingSlots';
-import { useUserLocation } from '../../hooks/useUserLocation';
 import type { UserStackParamList, UserTabParamList } from '../../navigation/types';
 import { endParkingSession, findActiveSession } from '../../services/historyService';
 import { playErrorFeedback, playSuccessFeedback } from '../../services/feedbackService';
@@ -32,7 +33,7 @@ type TabNav = {
 };
 
 export function MapScreen() {
-  const { colors, typography, isDark } = useTheme();
+  const { colors, isDark } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<UserStackParamList>>();
   const tabNavigation = useNavigation() as unknown as TabNav;
   const insets = useSafeAreaInsets();
@@ -43,8 +44,7 @@ export function MapScreen() {
   const preferredLocation = useAuthStore((state) => state.profile?.preferredLocation);
   const { unreadCount } = useNotifications(userId);
   const { slots, onlineSlots, stats, loading, error } = useParkingSlots();
-  const { activeSession, items: historyItems } = useParkingHistory(userId);
-  const { denied: locationDenied } = useUserLocation();
+  const { items: historyItems } = useParkingHistory(userId);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [watching, setWatching] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -64,7 +64,6 @@ export function MapScreen() {
   const watchingThisLot = Boolean(
     selected && preferredLocation && preferredLocation === selected.locationName,
   );
-  const openCount = stats.onlineAvailable;
   const offlineCount = stats.offlineSensors;
 
   const styles = useMemo(
@@ -79,26 +78,6 @@ export function MapScreen() {
           letterSpacing: -0.6,
           marginTop: 2,
         },
-        tip: {
-          marginTop: 10,
-          paddingHorizontal: 12,
-          paddingVertical: 10,
-          borderRadius: 14,
-          backgroundColor: colors.primarySoft,
-          borderWidth: 1,
-          borderColor: colors.glassBorder,
-        },
-        tipText: { color: colors.primaryDark, fontSize: 13, fontWeight: '600', lineHeight: 18 },
-        tipWarn: {
-          marginTop: 10,
-          paddingHorizontal: 12,
-          paddingVertical: 10,
-          borderRadius: 14,
-          backgroundColor: colors.warningSoft,
-          borderWidth: 1,
-          borderColor: colors.warning,
-        },
-        tipWarnText: { color: colors.warning, fontSize: 13, fontWeight: '700', lineHeight: 18 },
         mapWrap: {
           flex: 1,
           minHeight: 320,
@@ -150,40 +129,78 @@ export function MapScreen() {
         },
         sheet: {
           position: 'absolute',
-          left: 12,
-          right: 12,
-          backgroundColor: colors.sheet,
-          borderRadius: 28,
-          padding: 18,
+          left: 14,
+          right: 14,
+          backgroundColor: colors.cardSolid,
+          borderRadius: 24,
+          paddingTop: 10,
+          paddingHorizontal: 14,
+          paddingBottom: 14,
           borderWidth: 1,
           borderColor: colors.glassBorder,
+          shadowColor: '#0F172A',
+          shadowOpacity: 0.14,
+          shadowRadius: 18,
+          shadowOffset: { width: 0, height: 8 },
+          elevation: 8,
         },
         handle: {
           alignSelf: 'center',
-          width: 40,
+          width: 36,
           height: 4,
           borderRadius: 2,
           backgroundColor: colors.borderStrong,
           marginBottom: 12,
         },
-        sheetRow: {
+        sheetTop: {
           flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
+          alignItems: 'flex-start',
           gap: 12,
         },
-        sheetCopy: { flex: 1 },
-        sheetHint: { marginTop: 10, color: colors.textMuted, lineHeight: 20 },
-        watchingNote: {
-          marginTop: 8,
-          color: colors.primaryDark,
-          fontWeight: '700',
-          fontSize: 13,
+        statusOrb: {
+          width: 48,
+          height: 48,
+          borderRadius: 24,
+          alignItems: 'center',
+          justifyContent: 'center',
         },
-        actions: { flexDirection: 'row', gap: 10, marginTop: 14 },
-        actionBtn: { flex: 1 },
-        dismissHit: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-        dismiss: { color: colors.textMuted, fontWeight: '600' },
+        sheetCopy: { flex: 1, minWidth: 0, gap: 6 },
+        titleRow: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 8,
+        },
+        sheetTitle: {
+          fontSize: 20,
+          fontWeight: '800',
+          color: colors.text,
+          letterSpacing: -0.4,
+          flexShrink: 1,
+        },
+        sheetSub: {
+          fontSize: 13,
+          fontWeight: '600',
+          color: colors.textMuted,
+        },
+        closeBtn: {
+          width: 32,
+          height: 32,
+          borderRadius: 16,
+          backgroundColor: colors.primaryMuted,
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+        sheetHint: {
+          marginTop: 12,
+          marginBottom: 2,
+          color: colors.textMuted,
+          fontSize: 13,
+          lineHeight: 19,
+          fontWeight: '500',
+        },
+        actions: { flexDirection: 'row', gap: 8, marginTop: 12 },
+        actionBtn: { flex: 1, minHeight: 46 },
       }),
     [colors],
   );
@@ -198,8 +215,19 @@ export function MapScreen() {
     [firstLat, firstLng],
   );
 
+  const selectGuardUntil = useRef(0);
+
   const selectSlot = useCallback((slot: ParkingSlot) => {
+    // Ignore the map’s follow-up press so we don’t clear / swap the selection.
+    selectGuardUntil.current = Date.now() + 450;
     setSelectedId(slot.slotId);
+  }, []);
+
+  const dismissSelection = useCallback(() => {
+    if (Date.now() < selectGuardUntil.current) {
+      return;
+    }
+    setSelectedId(null);
   }, []);
 
   async function onWatchLot(slot: ParkingSlot) {
@@ -297,25 +325,6 @@ export function MapScreen() {
     ]);
   }
 
-  const tipText = (() => {
-    if (!isOnline) {
-      return 'You’re offline. Live pins pause until you’re back — you can still open a pin and use Maps.';
-    }
-    if (activeSession) {
-      return `You’re parked at ${activeSession.slotNumber}. Tap that pin to leave when you’re done.`;
-    }
-    if (locationDenied) {
-      return 'Location is off — you can still tap a green pin, then open Maps for directions.';
-    }
-    if (openCount > 0) {
-      return `Tap a green pin to park · ${openCount} open now`;
-    }
-    if (preferredLocation) {
-      return `No open spaces. You’re watching ${preferredLocation} for alerts.`;
-    }
-    return 'All spaces are taken. Tap a red pin and watch the lot for an alert.';
-  })();
-
   const sheet = selected
     ? (() => {
         if (mySessionOnSelected) {
@@ -375,20 +384,6 @@ export function MapScreen() {
         />
         <Text style={styles.greeting}>{greeting}</Text>
         <Text style={styles.name}>{fullName ?? 'Driver'}</Text>
-        {!selected && offlineCount > 0 ? (
-          <View style={styles.tipWarn}>
-            <Text style={styles.tipWarnText}>
-              {offlineCount === 1
-                ? '1 space hidden — sensor offline'
-                : `${offlineCount} spaces hidden — sensors offline`}
-            </Text>
-          </View>
-        ) : null}
-        {!selected ? (
-          <View style={styles.tip}>
-            <Text style={styles.tipText}>{tipText}</Text>
-          </View>
-        ) : null}
       </View>
 
       <View style={styles.mapWrap}>
@@ -405,19 +400,21 @@ export function MapScreen() {
             moveOnMarkerPress={false}
             rotateEnabled={false}
             pitchEnabled={false}
+            onPress={dismissSelection}
+            onPoiClick={dismissSelection}
           >
-            {onlineSlots.map((slot) => (
-              <Marker
-                key={`${slot.slotId}-${slot.status}`}
-                coordinate={{ latitude: slot.latitude, longitude: slot.longitude }}
-                pinColor={slot.status === 'Available' ? colors.available : colors.occupied}
-                title={slot.slotNumber}
-                description={`${slot.status} · ${slot.locationName}`}
-                onPress={() => selectSlot(slot)}
-                tracksViewChanges={false}
-                accessibilityLabel={`${slot.slotNumber}, ${slot.status}`}
-              />
-            ))}
+            {onlineSlots.map((slot) => {
+              const mine = Boolean(findActiveSession(historyItems, slot.slotId));
+              return (
+                <ParkingMarker
+                  key={slot.slotId}
+                  slot={slot}
+                  selected={selectedId === slot.slotId}
+                  isMine={mine}
+                  onPress={() => selectSlot(slot)}
+                />
+              );
+            })}
           </MapView>
 
           <View style={styles.chip} pointerEvents="box-none">
@@ -467,17 +464,66 @@ export function MapScreen() {
       {selected && sheet ? (
         <View style={[styles.sheet, { bottom: Math.max(insets.bottom, 12) + 78 }]}>
           <View style={styles.handle} />
-          <View style={styles.sheetRow}>
-            <View style={styles.sheetCopy}>
-              <Text style={typography.title}>{selected.slotNumber}</Text>
-              <Text style={typography.caption}>{selected.locationName}</Text>
+          <View style={styles.sheetTop}>
+            <View
+              style={[
+                styles.statusOrb,
+                {
+                  backgroundColor: mySessionOnSelected
+                    ? colors.primarySoft
+                    : selected.status === 'Available'
+                      ? colors.availableSoft
+                      : colors.occupiedSoft,
+                },
+              ]}
+            >
+              <Ionicons
+                name={
+                  mySessionOnSelected
+                    ? 'navigate'
+                    : selected.status === 'Available'
+                      ? 'car-outline'
+                      : 'car'
+                }
+                size={22}
+                color={
+                  mySessionOnSelected
+                    ? colors.primary
+                    : selected.status === 'Available'
+                      ? colors.available
+                      : colors.occupied
+                }
+              />
             </View>
-            <StatusBadge
-              label={mySessionOnSelected ? 'Your spot' : selected.status}
-              tone={
-                mySessionOnSelected || selected.status === 'Available' ? 'available' : 'occupied'
-              }
-            />
+            <View style={styles.sheetCopy}>
+              <View style={styles.titleRow}>
+                <Text style={styles.sheetTitle}>{selected.slotNumber}</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Close"
+                  onPress={() => setSelectedId(null)}
+                  style={styles.closeBtn}
+                  hitSlop={8}
+                >
+                  <Ionicons name="close" size={16} color={colors.textMuted} />
+                </Pressable>
+              </View>
+              <Text style={styles.sheetSub} numberOfLines={1}>
+                {selected.locationName}
+              </Text>
+              <StatusBadge
+                label={
+                  mySessionOnSelected
+                    ? 'Your spot'
+                    : selected.status === 'Available'
+                      ? 'Open'
+                      : 'Taken'
+                }
+                tone={
+                  mySessionOnSelected || selected.status === 'Available' ? 'available' : 'occupied'
+                }
+              />
+            </View>
           </View>
           <Text style={styles.sheetHint}>{sheet.hint}</Text>
           <View style={styles.actions}>
@@ -489,12 +535,14 @@ export function MapScreen() {
               onPress={sheet.onPrimary}
               style={styles.actionBtn}
             />
-            <Button
-              title={sheet.secondaryTitle}
-              variant="secondary"
-              onPress={sheet.onSecondary}
-              style={styles.actionBtn}
-            />
+            {sheet.secondaryTitle !== 'Close' ? (
+              <Button
+                title={sheet.secondaryTitle}
+                variant="secondary"
+                onPress={sheet.onSecondary}
+                style={styles.actionBtn}
+              />
+            ) : null}
           </View>
         </View>
       ) : null}

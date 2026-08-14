@@ -21,6 +21,7 @@ import { ProfileScreen } from '../screens/user/ProfileScreen';
 import { useAuthStore } from '../store/authStore';
 import { useTheme } from '../theme/ThemeProvider';
 import type {
+  AdminStackParamList,
   AdminTabParamList,
   AuthStackParamList,
   UserStackParamList,
@@ -29,6 +30,7 @@ import type {
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const UserStack = createNativeStackNavigator<UserStackParamList>();
+const AdminStack = createNativeStackNavigator<AdminStackParamList>();
 const UserTabs = createBottomTabNavigator<UserTabParamList>();
 const AdminTabs = createBottomTabNavigator<AdminTabParamList>();
 
@@ -150,7 +152,7 @@ function UserNavigator() {
   );
 }
 
-function AdminNavigator() {
+function AdminTabNavigator() {
   const { colors } = useTheme();
 
   const tabOptions = useMemo(
@@ -236,6 +238,40 @@ function AdminNavigator() {
         }}
       />
     </AdminTabs.Navigator>
+  );
+}
+
+function AdminNavigator() {
+  const { colors } = useTheme();
+
+  return (
+    <AdminStack.Navigator
+      screenOptions={{
+        headerTintColor: colors.primaryDark,
+        headerTitleStyle: { fontWeight: '700', color: colors.text },
+        headerShadowVisible: false,
+        headerStyle: { backgroundColor: colors.background },
+        animation: 'slide_from_right',
+      }}
+    >
+      <AdminStack.Screen
+        name="AdminTabs"
+        component={AdminTabNavigator}
+        options={{ headerShown: false }}
+      />
+      <AdminStack.Screen
+        name="Alerts"
+        component={NotificationsScreen}
+        options={{
+          title: '',
+          headerBackTitle: 'Back',
+          headerTransparent: true,
+          headerShadowVisible: false,
+          headerStyle: { backgroundColor: 'transparent' },
+          contentStyle: { backgroundColor: colors.background },
+        }}
+      />
+    </AdminStack.Navigator>
   );
 }
 

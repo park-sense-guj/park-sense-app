@@ -26,8 +26,13 @@ export type AdminTabParamList = {
   ProfileTab: undefined;
 };
 
+export type AdminStackParamList = {
+  AdminTabs: NavigatorScreenParams<AdminTabParamList>;
+  Alerts: undefined;
+};
+
 export type RootStackParamList = {
   Auth: NavigatorScreenParams<AuthStackParamList>;
   User: NavigatorScreenParams<UserStackParamList>;
-  Admin: NavigatorScreenParams<AdminTabParamList>;
+  Admin: NavigatorScreenParams<AdminStackParamList>;
 };

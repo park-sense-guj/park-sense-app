@@ -1,18 +1,19 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { initialsFromName } from '../../components/Avatar';
 import { BrandHeader } from '../../components/BrandHeader';
 import { Button } from '../../components/Button';
+import { DonutChart } from '../../components/DonutChart';
 import { GlassCard } from '../../components/GlassCard';
 import { Screen } from '../../components/Screen';
-import { StatCard } from '../../components/StatCard';
-import { StatusBadge } from '../../components/StatusBadge';
+import { radius } from '../../config/theme';
 import { useNotifications } from '../../hooks/useNotifications';
 import { useParkingSlots } from '../../hooks/useParkingSlots';
-import type { AdminTabParamList } from '../../navigation/types';
-import { markNotificationRead } from '../../services/notificationService';
+import type { AdminStackParamList, AdminTabParamList } from '../../navigation/types';
 import { seedDemoLot, seedDemoLotIfEmpty } from '../../services/seedService';
 import { useAuthStore } from '../../store/authStore';
 import { useTheme } from '../../theme/ThemeProvider';
@@ -23,15 +24,44 @@ type TabNav = {
 
 export function AdminDashboardScreen() {
   const { colors } = useTheme();
+  const stackNavigation = useNavigation<NativeStackNavigationProp<AdminStackParamList>>();
   const tabNavigation = useNavigation() as unknown as TabNav;
   const profile = useAuthStore((state) => state.profile);
   const { stats, slots, offlineSlots, loading } = useParkingSlots();
-  const { items: alerts, unreadCount } = useNotifications(profile?.userId);
+  const { unreadCount } = useNotifications(profile?.userId);
   const initials = initialsFromName(profile?.fullName ?? 'A');
   const [busy, setBusy] = useState(false);
   const occupancy =
     stats.onlineTotal === 0 ? 0 : Math.round((stats.onlineOccupied / stats.onlineTotal) * 100);
-  const recentAlerts = alerts.slice(0, 5);
+  const healthyPct =
+    stats.healthySensors + stats.faultySensors === 0
+      ? 0
+      : Math.round(
+          (stats.healthySensors / (stats.healthySensors + stats.faultySensors)) * 100,
+        );
+
+  const occupancySegments = useMemo(
+    () => [
+      { value: stats.onlineAvailable, color: colors.available, label: 'Open' },
+      { value: stats.onlineOccupied, color: colors.occupied, label: 'Taken' },
+    ],
+    [stats.onlineAvailable, stats.onlineOccupied, colors.available, colors.occupied],
+  );
+
+  const sensorSegments = useMemo(
+    () => [
+      { value: stats.healthySensors, color: colors.primary, label: 'Healthy' },
+      { value: stats.faultySensors, color: colors.warning, label: 'Offline' },
+    ],
+    [stats.healthySensors, stats.faultySensors, colors.primary, colors.warning],
+  );
+
+  const occupancyProgress =
+    stats.onlineTotal === 0 ? 0 : stats.onlineOccupied / stats.onlineTotal;
+  const sensorProgress =
+    stats.healthySensors + stats.faultySensors === 0
+      ? 0
+      : stats.healthySensors / (stats.healthySensors + stats.faultySensors);
 
   const styles = useMemo(
     () =>
@@ -47,37 +77,102 @@ export function AdminDashboardScreen() {
           marginTop: 2,
         },
         lede: { marginTop: 6, marginBottom: 18, color: colors.textMuted },
-        hero: { marginBottom: 14, padding: 18 },
-        heroLabel: { color: colors.textMuted, fontWeight: '700' },
-        heroValue: {
-          fontSize: 36,
+        chartsCard: { marginBottom: 14, padding: 16 },
+        chartsTitle: {
+          fontSize: 13,
           fontWeight: '800',
-          color: colors.primaryDark,
-          letterSpacing: -1,
-          marginVertical: 6,
+          letterSpacing: 0.6,
+          color: colors.textMuted,
+          marginBottom: 14,
         },
-        track: { height: 10, backgroundColor: colors.occupiedSoft, borderRadius: 99, overflow: 'hidden' },
-        fill: { height: '100%', backgroundColor: colors.occupied },
-        heroHint: { marginTop: 10, color: colors.textMuted },
-        row: { flexDirection: 'row', gap: 12, marginBottom: 12 },
+        chartsRow: {
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          gap: 8,
+        },
+        chartCol: { flex: 1, alignItems: 'center', gap: 10 },
+        chartCaption: {
+          fontSize: 12,
+          fontWeight: '800',
+          color: colors.text,
+          textAlign: 'center',
+        },
+        legend: { width: '100%', gap: 6 },
+        legendRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+        legendDot: { width: 8, height: 8, borderRadius: 4 },
+        legendText: { flex: 1, fontSize: 12, fontWeight: '600', color: colors.textMuted },
+        legendValue: { fontSize: 12, fontWeight: '800', color: colors.text },
+        chartsHint: {
+          marginTop: 14,
+          fontSize: 12,
+          fontWeight: '600',
+          color: colors.textMuted,
+          textAlign: 'center',
+          lineHeight: 17,
+        },
         note: { marginBottom: 16, padding: 16 },
         noteTitle: { fontWeight: '700', color: colors.text, marginBottom: 6 },
         noteBody: { color: colors.textMuted, lineHeight: 20 },
         spaced: { marginTop: 10 },
-        sectionTitle: {
-          marginTop: 4,
-          marginBottom: 10,
-          fontSize: 13,
-          fontWeight: '800',
-          letterSpacing: 0.8,
-          color: colors.textMuted,
+        offlineCard: {
+          marginBottom: 14,
+          padding: 14,
         },
-        alertCard: { marginBottom: 10, padding: 14 },
-        alertRow: { gap: 8 },
-        alertBody: { fontSize: 14, fontWeight: '600', color: colors.text, lineHeight: 20 },
-        alertTime: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
-        offlineList: { marginTop: 8, gap: 6 },
-        offlineItem: { color: colors.warning, fontWeight: '700', fontSize: 13 },
+        offlineHeader: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 10,
+          marginBottom: 10,
+        },
+        offlineIcon: {
+          width: 34,
+          height: 34,
+          borderRadius: 17,
+          backgroundColor: colors.warningSoft,
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+        offlineHeaderCopy: { flex: 1, minWidth: 0 },
+        offlineTitle: { fontSize: 15, fontWeight: '800', color: colors.text },
+        offlineHint: { marginTop: 2, fontSize: 12, color: colors.textMuted, lineHeight: 16 },
+        chipWrap: {
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          gap: 8,
+          marginBottom: 12,
+        },
+        chip: {
+          paddingVertical: 6,
+          paddingHorizontal: 10,
+          borderRadius: radius.pill,
+          backgroundColor: colors.primaryMuted,
+          borderWidth: 1,
+          borderColor: colors.border,
+        },
+        chipText: { fontSize: 12, fontWeight: '800', color: colors.primaryDark },
+        fixBtn: {
+          minHeight: 40,
+          borderRadius: radius.md,
+          backgroundColor: colors.primarySoft,
+          borderWidth: 1,
+          borderColor: colors.border,
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+        fixBtnText: { fontSize: 13, fontWeight: '800', color: colors.primaryDark },
+        quickRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+        quickBtn: {
+          flex: 1,
+          minHeight: 44,
+          borderRadius: radius.md,
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.primarySoft,
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingHorizontal: 10,
+        },
+        quickBtnText: { color: colors.primaryDark, fontWeight: '800', fontSize: 13 },
       }),
     [colors],
   );
@@ -121,6 +216,8 @@ export function AdminDashboardScreen() {
         <BrandHeader
           initials={initials}
           photoUrl={profile?.photoUrl}
+          alertsBadge={unreadCount}
+          onAlertsPress={() => stackNavigation.navigate('Alerts')}
           onProfilePress={() => tabNavigation.navigate('ProfileTab')}
         />
         <Text style={styles.greeting}>
@@ -131,94 +228,130 @@ export function AdminDashboardScreen() {
               : 'Good evening'}
         </Text>
         <Text style={styles.name}>{profile?.fullName ?? 'Admin'}</Text>
-        <Text style={styles.lede}>Live occupancy and mock IoT health.</Text>
+        <Text style={styles.lede}>Live occupancy, sensor health, and admin alerts.</Text>
 
-        <GlassCard style={styles.hero}>
-          <Text style={styles.heroLabel}>Occupancy (online sensors)</Text>
-          <Text style={styles.heroValue}>{loading ? '—' : `${occupancy}%`}</Text>
-          <View style={styles.track} accessibilityLabel={`Occupancy ${occupancy} percent`}>
-            <View style={[styles.fill, { width: `${occupancy}%` }]} />
+        <GlassCard style={styles.chartsCard}>
+          <Text style={styles.chartsTitle}>LIVE SNAPSHOT</Text>
+          <View style={styles.chartsRow}>
+            <View style={styles.chartCol}>
+              <DonutChart
+                progress={occupancyProgress}
+                fillColor={colors.occupied}
+                trackColor={colors.available}
+                centerValue={loading ? '—' : `${occupancy}%`}
+                centerLabel="taken"
+              />
+              <Text style={styles.chartCaption}>Occupancy</Text>
+              <View style={styles.legend}>
+                <View style={styles.legendRow}>
+                  <View style={[styles.legendDot, { backgroundColor: colors.available }]} />
+                  <Text style={styles.legendText}>Open</Text>
+                  <Text style={styles.legendValue}>
+                    {loading ? '—' : occupancySegments[0].value}
+                  </Text>
+                </View>
+                <View style={styles.legendRow}>
+                  <View style={[styles.legendDot, { backgroundColor: colors.occupied }]} />
+                  <Text style={styles.legendText}>Taken</Text>
+                  <Text style={styles.legendValue}>
+                    {loading ? '—' : occupancySegments[1].value}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.chartCol}>
+              <DonutChart
+                progress={sensorProgress}
+                fillColor={colors.primary}
+                trackColor={colors.warning}
+                centerValue={loading ? '—' : `${healthyPct}%`}
+                centerLabel="healthy"
+              />
+              <Text style={styles.chartCaption}>Sensors</Text>
+              <View style={styles.legend}>
+                <View style={styles.legendRow}>
+                  <View style={[styles.legendDot, { backgroundColor: colors.primary }]} />
+                  <Text style={styles.legendText}>Healthy</Text>
+                  <Text style={styles.legendValue}>
+                    {loading ? '—' : sensorSegments[0].value}
+                  </Text>
+                </View>
+                <View style={styles.legendRow}>
+                  <View style={[styles.legendDot, { backgroundColor: colors.warning }]} />
+                  <Text style={styles.legendText}>Offline</Text>
+                  <Text style={styles.legendValue}>
+                    {loading ? '—' : sensorSegments[1].value}
+                  </Text>
+                </View>
+              </View>
+            </View>
           </View>
-          <Text style={styles.heroHint}>
-            {stats.onlineTotal} online · {stats.onlineAvailable} open · {stats.onlineOccupied} taken
-            {stats.offlineSensors > 0 ? ` · ${stats.offlineSensors} offline` : ''}
+          <Text style={styles.chartsHint}>
+            {loading
+              ? 'Loading live counts…'
+              : `${stats.onlineTotal} online pins · ${stats.offlineSensors} hidden from drivers`}
           </Text>
         </GlassCard>
 
-        <View style={styles.row}>
-          <StatCard
-            label="Available"
-            value={loading ? '—' : stats.onlineAvailable}
-            accent={colors.available}
-          />
-          <StatCard
-            label="Occupied"
-            value={loading ? '—' : stats.onlineOccupied}
-            accent={colors.occupied}
-          />
-        </View>
-        <View style={styles.row}>
-          <StatCard label="Healthy sensors" value={loading ? '—' : stats.healthySensors} />
-          <StatCard
-            label="Sensor offline"
-            value={loading ? '—' : stats.faultySensors}
-            accent={colors.warning}
-          />
+        <View style={styles.quickRow}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open Sensors"
+            onPress={() => tabNavigation.navigate('SensorsTab')}
+            style={styles.quickBtn}
+          >
+            <Text style={styles.quickBtnText}>Manage sensors</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open Slots"
+            onPress={() => tabNavigation.navigate('SlotsTab')}
+            style={styles.quickBtn}
+          >
+            <Text style={styles.quickBtnText}>Manage slots</Text>
+          </Pressable>
         </View>
 
         {offlineSlots.length > 0 ? (
-          <GlassCard style={styles.note}>
-            <Text style={styles.noteTitle}>Hidden from drivers</Text>
-            <Text style={styles.noteBody}>
-              These spaces are offline (sensor faulty) and do not appear on the driver map.
-            </Text>
-            <View style={styles.offlineList}>
-              {offlineSlots.map((slot) => (
-                <Text key={slot.slotId} style={styles.offlineItem}>
-                  · {slot.slotNumber} — sensor offline
+          <GlassCard style={styles.offlineCard}>
+            <View style={styles.offlineHeader}>
+              <View style={styles.offlineIcon}>
+                <Ionicons name="eye-off-outline" size={16} color={colors.warning} />
+              </View>
+              <View style={styles.offlineHeaderCopy}>
+                <Text style={styles.offlineTitle}>
+                  {offlineSlots.length} hidden from drivers
                 </Text>
+                <Text style={styles.offlineHint}>
+                  Offline sensors — pins stay off the driver map until restored.
+                </Text>
+              </View>
+            </View>
+            <View style={styles.chipWrap}>
+              {offlineSlots.map((slot) => (
+                <View key={slot.slotId} style={styles.chip}>
+                  <Text style={styles.chipText}>{slot.slotNumber}</Text>
+                </View>
               ))}
             </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Fix offline sensors"
+              onPress={() => tabNavigation.navigate('SensorsTab')}
+              style={({ pressed }) => [styles.fixBtn, pressed && { opacity: 0.88 }]}
+            >
+              <Text style={styles.fixBtnText}>Fix on Sensors</Text>
+            </Pressable>
           </GlassCard>
         ) : null}
-
-        <Text style={styles.sectionTitle}>ADMIN ALERTS {unreadCount > 0 ? `(${unreadCount})` : ''}</Text>
-        {recentAlerts.length === 0 ? (
-          <GlassCard style={styles.note}>
-            <Text style={styles.noteBody}>
-              No sensor alerts yet. Mark a sensor faulty on the Sensors tab to test admin alerts.
-            </Text>
-          </GlassCard>
-        ) : (
-          recentAlerts.map((item) => (
-            <GlassCard key={item.notificationId} style={styles.alertCard}>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  if (!profile?.userId || item.isRead) {
-                    return;
-                  }
-                  void markNotificationRead(profile.userId, item.notificationId);
-                }}
-                style={styles.alertRow}
-              >
-                <StatusBadge
-                  label={item.isRead ? 'Read' : 'New'}
-                  tone={item.isRead ? 'neutral' : 'warning'}
-                />
-                <Text style={styles.alertBody}>{item.message}</Text>
-                <Text style={styles.alertTime}>{new Date(item.createdTime).toLocaleString()}</Text>
-              </Pressable>
-            </GlassCard>
-          ))
-        )}
 
         <GlassCard style={styles.note}>
           <Text style={styles.noteTitle}>IoT simulator</Text>
           <Text style={styles.noteBody}>
             {slots.length === 0
               ? 'No hardware yet. Seed the demo lot to simulate ESP32 writes.'
-              : 'Toggling a slot on the Slots tab updates the same Firebase path an ESP32 will use. Marking a sensor faulty hides that pin from drivers.'}
+              : 'Toggling a slot on Slots updates the same Firebase path an ESP32 will use. Marking a sensor faulty hides that pin from drivers and creates an admin alert.'}
           </Text>
         </GlassCard>
 

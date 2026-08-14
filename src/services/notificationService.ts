@@ -45,6 +45,21 @@ export async function markNotificationRead(userId: string, notificationId: strin
   });
 }
 
+export async function markAllNotificationsRead(
+  userId: string,
+  items: AppNotification[],
+): Promise<void> {
+  const unread = items.filter((item) => !item.isRead);
+  if (unread.length === 0) {
+    return;
+  }
+  const patch: Record<string, boolean> = {};
+  for (const item of unread) {
+    patch[`notifications/${userId}/${item.notificationId}/isRead`] = true;
+  }
+  await update(ref(getFirebaseDatabase()), patch);
+}
+
 export async function notifyUsersSlotAvailable(params: {
   userIds: string[];
   slotNumber: string;

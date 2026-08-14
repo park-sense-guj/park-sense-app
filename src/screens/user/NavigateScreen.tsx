@@ -1,14 +1,14 @@
+import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { CommonActions } from '@react-navigation/native';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button } from '../../components/Button';
 import { StatusBadge } from '../../components/StatusBadge';
 import { darkMapStyle, lightMapStyle } from '../../config/mapStyles';
-import { radius, spacing } from '../../config/theme';
 import { useParkingHistory } from '../../hooks/useParkingHistory';
 import { useParkingSlots } from '../../hooks/useParkingSlots';
 import { useUserLocation } from '../../hooks/useUserLocation';
@@ -20,6 +20,8 @@ import {
   startParkingSession,
 } from '../../services/historyService';
 import {
+  distanceMeters,
+  distanceToRouteMeters,
   fetchDrivingRoute,
   openExternalNavigation,
   type LatLng,
@@ -32,25 +34,37 @@ import { useTheme } from '../../theme/ThemeProvider';
 
 type Props = NativeStackScreenProps<UserStackParamList, 'Navigate'>;
 
-type Step = 'drive' | 'parked' | 'done';
+type FlowStep = 'drive' | 'parked' | 'done';
 
 const SLOW_ROUTE_MS = 4_000;
+/** Only re-call Directions if the driver is clearly off the polyline. */
+const OFF_ROUTE_METERS = 75;
+/** Minimum gap between Directions requests (keeps FYP usage in free quota). */
+const REROUTE_COOLDOWN_MS = 45_000;
+/** Advance to the next turn when within this of the step end. */
+const STEP_ARRIVE_METERS = 28;
+const DESTINATION_ARRIVE_METERS = 40;
 
 export function NavigateScreen({ navigation, route }: Props) {
-  const { colors, typography, isDark } = useTheme();
+  const { colors, isDark } = useTheme();
   const { slot: routeSlot } = route.params;
   const insets = useSafeAreaInsets();
   const isOnline = useConnectivityStore((state) => state.isOnline);
   const profile = useAuthStore((state) => state.profile);
-  const { location, denied, loading: locationLoading } = useUserLocation();
+  const { location, heading, denied, loading: locationLoading } = useUserLocation({
+    watch: true,
+  });
   const { slots, isSensorFaulty } = useParkingSlots();
   const { items: historyItems } = useParkingHistory(profile?.userId);
   const mapRef = useRef<MapView | null>(null);
-  const [routeBundle, setRouteBundle] = useState<{
-    key: string;
-    result: RouteResult | null;
-  }>({ key: '', result: null });
+  const lastRouteAt = useRef(0);
+  const rerouting = useRef(false);
+  const [routeResult, setRouteResult] = useState<RouteResult | null>(null);
   const [routeSlow, setRouteSlow] = useState(false);
+  const [routeLoading, setRouteLoading] = useState(false);
+  const [guiding, setGuiding] = useState(false);
+  const [stepIndex, setStepIndex] = useState(0);
+  const [arrived, setArrived] = useState(false);
   const [localHistoryId, setLocalHistoryId] = useState<string | null>(null);
   const [leftSession, setLeftSession] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -68,127 +82,306 @@ export function NavigateScreen({ navigation, route }: Props) {
 
   const destination: LatLng = { latitude: slot.latitude, longitude: slot.longitude };
   const origin = location ?? destination;
-  const routeKey = location
-    ? `${slot.slotId}:${location.latitude.toFixed(5)},${location.longitude.toFixed(5)}`
-    : `solo:${slot.slotId}`;
 
   const sessionId = activeOnThisSlot?.historyId ?? localHistoryId;
   const isParked = Boolean(sessionId) && !leftSession;
-  const step: Step = leftSession ? 'done' : isParked ? 'parked' : 'drive';
+  const flowStep: FlowStep = leftSession ? 'done' : isParked ? 'parked' : 'drive';
   const canPark = !isParked && !leftSession && slot.status === 'Available' && !sensorOffline;
 
-  const displayRoute = useMemo((): RouteResult | null => {
-    if (!location) {
-      return { coordinates: [destination] };
-    }
-    if (routeBundle.key === routeKey) {
-      return routeBundle.result;
-    }
-    return null;
-  }, [location, destination, routeBundle, routeKey]);
+  const currentStep = routeResult?.steps[stepIndex] ?? null;
+  const remainingSteps = Math.max((routeResult?.steps.length ?? 0) - stepIndex, 0);
 
-  const routeLoading = Boolean(location) && routeBundle.key !== routeKey;
   const styles = useMemo(
     () =>
       StyleSheet.create({
         flex: { flex: 1, backgroundColor: colors.background },
         map: { flex: 1 },
-        panel: {
-          backgroundColor: colors.sheet,
-          paddingHorizontal: spacing.lg,
-          paddingTop: 18,
-          borderTopLeftRadius: radius.xl,
-          borderTopRightRadius: radius.xl,
-          borderTopWidth: 1,
-          borderColor: colors.glassBorder,
-        },
-        steps: { flexDirection: 'row', gap: 8, marginBottom: 14 },
-        stepChip: {
-          flex: 1,
-          borderRadius: 12,
-          paddingVertical: 8,
-          paddingHorizontal: 8,
-          backgroundColor: colors.primaryMuted,
-          alignItems: 'center',
-        },
-        stepChipActive: {
-          backgroundColor: colors.primarySoft,
+        banner: {
+          position: 'absolute',
+          left: 16,
+          right: 16,
+          top: 12,
+          borderRadius: 20,
+          backgroundColor: colors.cardSolid,
           borderWidth: 1,
-          borderColor: colors.primary,
+          borderColor: colors.glassBorder,
+          paddingHorizontal: 14,
+          paddingVertical: 12,
+          gap: 4,
+          shadowColor: '#0F172A',
+          shadowOpacity: 0.12,
+          shadowRadius: 14,
+          shadowOffset: { width: 0, height: 6 },
+          elevation: 6,
         },
-        stepChipDone: { backgroundColor: colors.primary },
-        stepLabel: {
+        bannerLabel: {
           fontSize: 11,
           fontWeight: '800',
-          color: colors.textMuted,
-          letterSpacing: 0.3,
+          letterSpacing: 0.6,
+          color: colors.primaryDark,
+          textTransform: 'uppercase',
         },
-        stepLabelActive: { color: colors.primaryDark },
-        stepLabelDone: { color: colors.white },
-        row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
-        copy: { flex: 1 },
-        eta: { color: colors.primaryDark, marginVertical: 12, fontWeight: '600', lineHeight: 20 },
-        hint: { color: colors.textMuted, marginBottom: 12, lineHeight: 20 },
-        actions: { flexDirection: 'row', gap: 10, marginTop: 10 },
-        half: { flex: 1 },
-        primaryGap: { marginTop: 4 },
+        bannerText: {
+          fontSize: 16,
+          fontWeight: '800',
+          color: colors.text,
+          lineHeight: 22,
+        },
+        bannerMeta: {
+          fontSize: 12,
+          fontWeight: '600',
+          color: colors.textMuted,
+        },
+        panel: {
+          backgroundColor: colors.cardSolid,
+          paddingHorizontal: 16,
+          paddingTop: 10,
+          borderTopLeftRadius: 28,
+          borderTopRightRadius: 28,
+          borderTopWidth: 1,
+          borderColor: colors.glassBorder,
+          shadowColor: '#0F172A',
+          shadowOpacity: 0.14,
+          shadowRadius: 18,
+          shadowOffset: { width: 0, height: -4 },
+          elevation: 10,
+        },
+        handle: {
+          alignSelf: 'center',
+          width: 36,
+          height: 4,
+          borderRadius: 2,
+          backgroundColor: colors.borderStrong,
+          marginBottom: 12,
+        },
+        progress: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          marginBottom: 14,
+          paddingHorizontal: 4,
+        },
+        progressDot: {
+          width: 8,
+          height: 8,
+          borderRadius: 4,
+          backgroundColor: colors.borderStrong,
+        },
+        progressDotActive: {
+          width: 10,
+          height: 10,
+          borderRadius: 5,
+          backgroundColor: colors.primary,
+        },
+        progressDotDone: {
+          backgroundColor: colors.primary,
+        },
+        progressLine: {
+          flex: 1,
+          height: 2,
+          marginHorizontal: 6,
+          backgroundColor: colors.borderStrong,
+          borderRadius: 1,
+        },
+        progressLineDone: {
+          backgroundColor: colors.primary,
+        },
+        progressLabels: {
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          marginBottom: 14,
+          paddingHorizontal: 2,
+        },
+        progressLabel: {
+          fontSize: 11,
+          fontWeight: '700',
+          color: colors.textMuted,
+          width: 52,
+          textAlign: 'center',
+        },
+        progressLabelActive: {
+          color: colors.primaryDark,
+          fontWeight: '800',
+        },
+        header: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 12,
+        },
+        orb: {
+          width: 48,
+          height: 48,
+          borderRadius: 24,
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+        headerCopy: { flex: 1, minWidth: 0, gap: 2 },
+        title: {
+          fontSize: 20,
+          fontWeight: '800',
+          color: colors.text,
+          letterSpacing: -0.4,
+        },
+        subtitle: {
+          fontSize: 13,
+          fontWeight: '600',
+          color: colors.textMuted,
+        },
+        metaCard: {
+          marginTop: 12,
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+          borderRadius: 14,
+          backgroundColor: colors.primarySoft,
+          borderWidth: 1,
+          borderColor: colors.glassBorder,
+        },
+        metaText: {
+          fontSize: 13,
+          fontWeight: '700',
+          color: colors.primaryDark,
+          lineHeight: 18,
+        },
+        hint: {
+          marginTop: 10,
+          color: colors.textMuted,
+          fontSize: 13,
+          fontWeight: '500',
+          lineHeight: 19,
+        },
+        actions: {
+          marginTop: 14,
+          gap: 8,
+          width: '100%',
+        },
+        externalLink: {
+          alignSelf: 'center',
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 6,
+          paddingVertical: 10,
+          marginTop: 2,
+        },
+        externalLinkText: {
+          fontSize: 13,
+          fontWeight: '700',
+          color: colors.textMuted,
+        },
       }),
     [colors],
   );
 
-  useEffect(() => {
-    if (!location) {
-      return;
-    }
-    let cancelled = false;
-    const key = routeKey;
-    setRouteSlow(false);
-    const slowTimer = setTimeout(() => {
-      if (!cancelled) {
-        setRouteSlow(true);
+  const loadRoute = useCallback(
+    async (from: LatLng, reason: 'initial' | 'reroute' | 'manual') => {
+      if (rerouting.current && reason === 'reroute') {
+        return;
       }
-    }, SLOW_ROUTE_MS);
+      const now = Date.now();
+      if (reason === 'reroute' && now - lastRouteAt.current < REROUTE_COOLDOWN_MS) {
+        return;
+      }
+      rerouting.current = true;
+      setRouteLoading(true);
+      setRouteSlow(false);
+      const slowTimer = setTimeout(() => setRouteSlow(true), SLOW_ROUTE_MS);
+      try {
+        const result = await fetchDrivingRoute(from, destination);
+        setRouteResult(result);
+        setStepIndex(0);
+        setArrived(false);
+        lastRouteAt.current = Date.now();
+      } finally {
+        clearTimeout(slowTimer);
+        setRouteSlow(false);
+        setRouteLoading(false);
+        rerouting.current = false;
+      }
+    },
+    [destination],
+  );
 
-    void fetchDrivingRoute(location, {
-      latitude: slot.latitude,
-      longitude: slot.longitude,
-    })
-      .then((result) => {
-        if (!cancelled) {
-          setRouteBundle({ key, result });
-          setRouteSlow(false);
-        }
-      })
-      .catch(() => {
-        // fetchDrivingRoute is designed not to throw; keep a hard fallback anyway.
-        if (!cancelled) {
-          setRouteBundle({
-            key,
-            result: {
-              coordinates: [location, { latitude: slot.latitude, longitude: slot.longitude }],
-              isFallback: true,
-              warning: 'Couldn’t load turn-by-turn preview. Open Maps for directions.',
-            },
-          });
-          setRouteSlow(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-      clearTimeout(slowTimer);
-    };
-  }, [location, routeKey, slot.latitude, slot.longitude]);
-
+  // Fetch once when we first get a location (not on every GPS tick).
   useEffect(() => {
-    if (!displayRoute?.coordinates.length || !mapRef.current) {
+    if (!location || routeResult || isParked || flowStep === 'done') {
       return;
     }
-    mapRef.current.fitToCoordinates(displayRoute.coordinates, {
-      edgePadding: { top: 60, right: 40, bottom: 40, left: 40 },
-      animated: true,
-    });
-  }, [displayRoute]);
+    void loadRoute(location, 'initial');
+  }, [location, routeResult, isParked, flowStep, loadRoute]);
+
+  // Camera: overview when idle; follow user while guiding.
+  useEffect(() => {
+    if (!mapRef.current) {
+      return;
+    }
+    if (guiding && location && !isParked) {
+      mapRef.current.animateCamera(
+        {
+          center: location,
+          heading: heading ?? 0,
+          pitch: 45,
+          zoom: 17,
+        },
+        { duration: 600 },
+      );
+      return;
+    }
+    if (routeResult?.coordinates.length) {
+      mapRef.current.fitToCoordinates(routeResult.coordinates, {
+        edgePadding: { top: guiding ? 120 : 60, right: 40, bottom: 40, left: 40 },
+        animated: true,
+      });
+    }
+  }, [guiding, location, heading, routeResult, isParked]);
+
+  // Advance steps + off-route re-fetch while guiding.
+  useEffect(() => {
+    if (!guiding || !location || !routeResult || isParked) {
+      return;
+    }
+
+    const toDestination = distanceMeters(location, destination);
+    if (toDestination <= DESTINATION_ARRIVE_METERS) {
+      setArrived(true);
+      setGuiding(false);
+      return;
+    }
+
+    const steps = routeResult.steps;
+    if (steps.length > 0) {
+      let index = stepIndex;
+      while (
+        index < steps.length - 1 &&
+        distanceMeters(location, steps[index].end) <= STEP_ARRIVE_METERS
+      ) {
+        index += 1;
+      }
+      if (index !== stepIndex) {
+        setStepIndex(index);
+      }
+    }
+
+    if (
+      isOnline &&
+      !routeResult.isFallback &&
+      distanceToRouteMeters(location, routeResult.coordinates) > OFF_ROUTE_METERS
+    ) {
+      void loadRoute(location, 'reroute');
+    }
+  }, [
+    guiding,
+    location,
+    routeResult,
+    isParked,
+    destination,
+    stepIndex,
+    isOnline,
+    loadRoute,
+  ]);
+
+  useEffect(() => {
+    if (isParked || flowStep === 'done') {
+      setGuiding(false);
+    }
+  }, [isParked, flowStep]);
 
   async function onParked() {
     if (!profile || isParked) {
@@ -205,6 +398,7 @@ export function NavigateScreen({ navigation, route }: Props) {
       const id = await startParkingSession(profile.userId, liveSlot);
       setLocalHistoryId(id);
       setLeftSession(false);
+      setGuiding(false);
       playSuccessFeedback();
       Alert.alert(
         'You’re parked',
@@ -284,56 +478,146 @@ export function NavigateScreen({ navigation, route }: Props) {
     }
   }
 
+  function onToggleGuidance() {
+    if (guiding) {
+      setGuiding(false);
+      return;
+    }
+    if (!location) {
+      Alert.alert('Location needed', 'Turn on location to start in-app guidance.');
+      return;
+    }
+    if (!routeResult) {
+      void loadRoute(location, 'manual').then(() => setGuiding(true));
+      return;
+    }
+    setGuiding(true);
+  }
+
   const etaText = (() => {
-    if (isParked || step === 'done') {
-      if (displayRoute?.durationText && !displayRoute.isFallback) {
-        return `Drive was about ${displayRoute.durationText} · ${displayRoute.distanceText}`;
+    if (isParked || flowStep === 'done') {
+      if (routeResult?.durationText && !routeResult.isFallback) {
+        return `Drive was about ${routeResult.durationText} · ${routeResult.distanceText}`;
       }
       return isParked
         ? 'You’re at this space. Leave when you go so others see it as open.'
         : 'Session finished — this space is free on the map again.';
     }
-    if (!isOnline) {
-      return 'You’re offline. Open Maps for directions; park/leave when you’re back online.';
+    if (arrived) {
+      return 'You’ve arrived. Tap I’m parked when you’re in the space.';
+    }
+    if (!isOnline && !routeResult) {
+      return 'You’re offline. Reconnect for turn guidance, or open Apple/Google Maps.';
     }
     if (routeLoading || locationLoading) {
       return routeSlow
         ? 'Connection is slow — still loading your route…'
         : 'Getting your route…';
     }
-    if (displayRoute?.warning) {
-      return displayRoute.warning;
+    if (routeResult?.warning && routeResult.isFallback) {
+      return routeResult.warning;
     }
-    if (displayRoute?.durationText) {
-      return `About ${displayRoute.durationText} · ${displayRoute.distanceText}`;
+    if (guiding && currentStep) {
+      const meta = [currentStep.distanceText, routeResult?.durationText]
+        .filter(Boolean)
+        .join(' · ');
+      return meta ? `Next turn · ${meta}` : 'Follow the guidance above.';
+    }
+    if (routeResult?.durationText) {
+      return `About ${routeResult.durationText} · ${routeResult.distanceText}`;
     }
     if (denied) {
-      return 'Location is off. Open Maps for turn-by-turn directions.';
+      return 'Location is off. Enable it for in-app guidance, or open Maps.';
     }
     if (!location) {
-      return 'Waiting for your location to preview a route.';
+      return 'Waiting for your location…';
     }
-    return 'Route preview is ready. Open Maps for turn-by-turn directions.';
+    return 'Route ready. Start guidance to follow turns in the app.';
   })();
 
   const nextHint = (() => {
     if (sensorOffline) {
       return 'Sensor offline for this space. Go back and pick another pin.';
     }
-    if (step === 'done') {
+    if (flowStep === 'done') {
       return 'All done — this space is free on the map again.';
     }
     if (isParked) {
       return 'Leave when you go so the pin turns green and lot watchers can be notified.';
     }
-    if (!isOnline) {
-      return 'Live map updates need a connection. You can still open Maps to drive there.';
+    if (arrived) {
+      return 'Park in the bay, then confirm with I’m parked.';
+    }
+    if (guiding) {
+      return remainingSteps > 1
+        ? `${remainingSteps} turns left · map follows you`
+        : 'Almost there · map follows you';
     }
     if (slot.status === 'Occupied') {
       return 'This space was just taken. Go back and pick a green pin.';
     }
-    return 'Open Maps to drive there, then tap I’m parked when you arrive.';
+    return 'Start guidance for turn-by-turn directions to this space.';
   })();
+
+  const nearDestination =
+    arrived ||
+    Boolean(
+      location && distanceMeters(location, destination) <= DESTINATION_ARRIVE_METERS * 2,
+    );
+  const showParkAction = flowStep === 'drive' && nearDestination && canPark;
+
+  const badgeLabel = sensorOffline
+    ? 'Sensor offline'
+    : isParked
+      ? 'Your spot'
+      : guiding
+        ? 'Guiding'
+        : arrived
+          ? 'Arrived'
+          : flowStep === 'done'
+            ? 'Done'
+            : slot.status === 'Available'
+              ? 'Open'
+              : 'Taken';
+
+  const badgeTone =
+    sensorOffline
+      ? ('warning' as const)
+      : isParked || slot.status === 'Available' || arrived || flowStep === 'done'
+        ? ('available' as const)
+        : ('occupied' as const);
+
+  const orbBg = sensorOffline
+    ? colors.warningSoft
+    : isParked || flowStep === 'done'
+      ? colors.primarySoft
+      : slot.status === 'Available'
+        ? colors.availableSoft
+        : colors.occupiedSoft;
+
+  const orbFg = sensorOffline
+    ? colors.warning
+    : isParked || flowStep === 'done'
+      ? colors.primary
+      : slot.status === 'Available'
+        ? colors.available
+        : colors.occupied;
+
+  const orbIcon =
+    flowStep === 'done'
+      ? ('checkmark-circle' as const)
+      : isParked
+        ? ('car' as const)
+        : guiding
+          ? ('navigate' as const)
+          : arrived
+            ? ('flag' as const)
+            : ('car-outline' as const);
+
+  const driveDone = flowStep !== 'drive';
+  const parkDone = flowStep === 'done';
+  const parkActive = flowStep === 'parked';
+  const leaveActive = flowStep === 'done';
 
   return (
     <View style={styles.flex}>
@@ -348,10 +632,12 @@ export function NavigateScreen({ navigation, route }: Props) {
           longitudeDelta: 0.02,
         }}
         showsUserLocation
+        followsUserLocation={guiding && !isParked}
+        showsTraffic={guiding}
         userInterfaceStyle={isDark ? 'dark' : 'light'}
         customMapStyle={isDark ? darkMapStyle : lightMapStyle}
-        rotateEnabled={false}
-        pitchEnabled={false}
+        rotateEnabled={guiding}
+        pitchEnabled={guiding}
         accessibilityLabel="Route to selected parking slot"
       >
         <Marker
@@ -361,95 +647,139 @@ export function NavigateScreen({ navigation, route }: Props) {
           title={slot.slotNumber}
           tracksViewChanges={false}
         />
-        {displayRoute && displayRoute.coordinates.length > 1 ? (
+        {routeResult && routeResult.coordinates.length > 1 ? (
           <Polyline
-            coordinates={displayRoute.coordinates}
+            coordinates={routeResult.coordinates}
             strokeColor={colors.primary}
             strokeWidth={5}
           />
         ) : null}
       </MapView>
 
-      <View style={[styles.panel, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-        <View style={styles.steps}>
-          <StepChip label="1 · Drive" active={step === 'drive'} done={step !== 'drive'} styles={styles} />
-          <StepChip
-            label="2 · Park"
-            active={step === 'parked'}
-            done={step === 'done'}
-            styles={styles}
+      {guiding && currentStep && !isParked ? (
+        <View style={[styles.banner, { top: Math.max(insets.top, 12) }]}>
+          <Text style={styles.bannerLabel}>
+            {arrived ? 'Arrived' : `Step ${stepIndex + 1} of ${routeResult?.steps.length ?? 1}`}
+          </Text>
+          <Text style={styles.bannerText} numberOfLines={3}>
+            {arrived ? `You’ve reached ${slot.slotNumber}` : currentStep.instruction}
+          </Text>
+          {!arrived && currentStep.distanceText ? (
+            <Text style={styles.bannerMeta}>{currentStep.distanceText} to next turn</Text>
+          ) : null}
+        </View>
+      ) : null}
+
+      <View style={[styles.panel, { paddingBottom: Math.max(insets.bottom, 14) }]}>
+        <View style={styles.handle} />
+
+        <View style={styles.progress} accessibilityRole="progressbar">
+          <View
+            style={[
+              styles.progressDot,
+              (driveDone || flowStep === 'drive') && styles.progressDotActive,
+              driveDone && styles.progressDotDone,
+            ]}
           />
-          <StepChip label="3 · Leave" active={step === 'done'} done={false} styles={styles} />
+          <View style={[styles.progressLine, driveDone && styles.progressLineDone]} />
+          <View
+            style={[
+              styles.progressDot,
+              (parkActive || parkDone) && styles.progressDotActive,
+              parkDone && styles.progressDotDone,
+            ]}
+          />
+          <View style={[styles.progressLine, parkDone && styles.progressLineDone]} />
+          <View
+            style={[
+              styles.progressDot,
+              leaveActive && styles.progressDotActive,
+              leaveActive && styles.progressDotDone,
+            ]}
+          />
+        </View>
+        <View style={styles.progressLabels}>
+          <Text style={[styles.progressLabel, flowStep === 'drive' && styles.progressLabelActive]}>
+            Drive
+          </Text>
+          <Text style={[styles.progressLabel, parkActive && styles.progressLabelActive]}>Park</Text>
+          <Text style={[styles.progressLabel, leaveActive && styles.progressLabelActive]}>
+            Leave
+          </Text>
         </View>
 
-        <View style={styles.row}>
-          <View style={styles.copy}>
-            <Text style={typography.title}>To {slot.slotNumber}</Text>
-            <Text style={typography.caption}>{slot.locationName}</Text>
+        <View style={styles.header}>
+          <View style={[styles.orb, { backgroundColor: orbBg }]}>
+            <Ionicons name={orbIcon} size={22} color={orbFg} />
           </View>
-          <StatusBadge
-            label={sensorOffline ? 'Sensor offline' : isParked ? 'Your spot' : slot.status}
-            tone={
-              sensorOffline
-                ? 'warning'
-                : isParked || slot.status === 'Available'
-                  ? 'available'
-                  : 'occupied'
-            }
-          />
+          <View style={styles.headerCopy}>
+            <Text style={styles.title}>
+              {flowStep === 'done'
+                ? `${slot.slotNumber} freed`
+                : isParked
+                  ? `Parked at ${slot.slotNumber}`
+                  : `To ${slot.slotNumber}`}
+            </Text>
+            <Text style={styles.subtitle} numberOfLines={1}>
+              {slot.locationName}
+            </Text>
+          </View>
+          <StatusBadge label={badgeLabel} tone={badgeTone} />
         </View>
-        <Text style={styles.eta}>{etaText}</Text>
+
+        <View style={styles.metaCard}>
+          <Text style={styles.metaText}>{etaText}</Text>
+        </View>
         <Text style={styles.hint}>{nextHint}</Text>
 
-        <Button title="Open in Maps" onPress={() => void onOpenMaps()} style={styles.primaryGap} />
         <View style={styles.actions}>
-          <Button
-            title={isParked ? 'Parked ✓' : 'I’m parked'}
-            variant="secondary"
-            disabled={!canPark || !isOnline}
-            loading={busy && !isParked}
-            onPress={() => void onParked()}
-            style={styles.half}
-          />
-          <Button
-            title="Leave slot"
-            variant="danger"
-            disabled={!isParked || !isOnline}
-            loading={busy && isParked}
-            onPress={onLeave}
-            style={styles.half}
-          />
-        </View>
-      </View>
-    </View>
-  );
-}
+          {flowStep === 'drive' ? (
+            <>
+              {showParkAction ? (
+                <Button
+                  title="I’m parked"
+                  onPress={() => void onParked()}
+                  disabled={!isOnline}
+                  loading={busy && !isParked}
+                />
+              ) : null}
+              <Button
+                title={guiding ? 'Stop guidance' : 'Start guidance'}
+                variant={showParkAction ? 'secondary' : 'primary'}
+                onPress={onToggleGuidance}
+                loading={routeLoading && !routeResult}
+                disabled={sensorOffline || (!location && !denied)}
+              />
+            </>
+          ) : null}
 
-function StepChip({
-  label,
-  active,
-  done,
-  styles,
-}: {
-  label: string;
-  active: boolean;
-  done: boolean;
-  styles: {
-    stepChip: object;
-    stepChipActive: object;
-    stepChipDone: object;
-    stepLabel: object;
-    stepLabelActive: object;
-    stepLabelDone: object;
-  };
-}) {
-  return (
-    <View style={[styles.stepChip, active && styles.stepChipActive, done && styles.stepChipDone]}>
-      <Text
-        style={[styles.stepLabel, active && styles.stepLabelActive, done && styles.stepLabelDone]}
-      >
-        {label}
-      </Text>
+          {flowStep === 'parked' ? (
+            <Button
+              title="Leave slot"
+              variant="danger"
+              disabled={!isOnline}
+              loading={busy && isParked}
+              onPress={onLeave}
+            />
+          ) : null}
+
+          {flowStep === 'done' ? (
+            <Button title="Back to map" onPress={() => navigation.goBack()} />
+          ) : null}
+        </View>
+
+        {flowStep === 'drive' ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open in Apple or Google Maps"
+            onPress={() => void onOpenMaps()}
+            style={styles.externalLink}
+          >
+            <Ionicons name="map-outline" size={14} color={colors.textMuted} />
+            <Text style={styles.externalLinkText}>Prefer Apple or Google Maps?</Text>
+          </Pressable>
+        ) : null}
+      </View>
     </View>
   );
 }

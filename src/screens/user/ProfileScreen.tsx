@@ -89,6 +89,7 @@ export function ProfileScreen() {
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const isAdmin = profile?.role === 'admin';
   const initials = initialsFromName(profile?.fullName);
   const nameDirty = fullName.trim() !== (profile?.fullName ?? '');
   const emailDirty = email.trim().toLowerCase() !== (profile?.email ?? '');
@@ -690,27 +691,29 @@ export function ProfileScreen() {
 
           <GlassCard style={styles.compactCard}>
             <Text style={styles.cardTitle}>ABOUT</Text>
-            {ABOUT_SHEETS.map((sheet, index) => (
-              <View key={sheet.id}>
-                {index > 0 ? <View style={styles.infoDivider} /> : null}
-                <Pressable
-                  onPress={() => setAboutSheet(sheet.id)}
-                  accessibilityRole="button"
-                  accessibilityLabel={sheet.title}
-                  style={styles.infoRow}
-                >
-                  <View style={styles.infoIcon}>
-                    <Ionicons name={sheet.icon} size={17} color={colors.primary} />
+            {!isAdmin
+              ? ABOUT_SHEETS.map((sheet, index) => (
+                  <View key={sheet.id}>
+                    {index > 0 ? <View style={styles.infoDivider} /> : null}
+                    <Pressable
+                      onPress={() => setAboutSheet(sheet.id)}
+                      accessibilityRole="button"
+                      accessibilityLabel={sheet.title}
+                      style={styles.infoRow}
+                    >
+                      <View style={styles.infoIcon}>
+                        <Ionicons name={sheet.icon} size={17} color={colors.primary} />
+                      </View>
+                      <View style={styles.infoCopy}>
+                        <Text style={styles.infoValue}>{sheet.title}</Text>
+                        <Text style={styles.infoHint}>{sheet.subtitle}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+                    </Pressable>
                   </View>
-                  <View style={styles.infoCopy}>
-                    <Text style={styles.infoValue}>{sheet.title}</Text>
-                    <Text style={styles.infoHint}>{sheet.subtitle}</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
-                </Pressable>
-              </View>
-            ))}
-            <View style={styles.infoDivider} />
+                ))
+              : null}
+            {!isAdmin ? <View style={styles.infoDivider} /> : null}
             <View style={styles.infoRow} accessibilityLabel={`App version ${appVersionLabel}`}>
               <View style={styles.infoIcon}>
                 <Ionicons name="information-circle-outline" size={17} color={colors.primary} />
