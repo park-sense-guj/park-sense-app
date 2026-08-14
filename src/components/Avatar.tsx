@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { Image, StyleSheet, Text, View, type StyleProp, type ImageStyle, type ViewStyle } from 'react-native';
 
 import { useTheme } from '../theme/ThemeProvider';
@@ -18,10 +18,13 @@ export function initialsFromName(fullName?: string | null) {
     .slice(0, 2);
 }
 
-export function Avatar({ initials = 'P', photoUrl, size = 40, style }: Props) {
+function AvatarComponent({ initials = 'P', photoUrl, size = 40, style }: Props) {
   const { colors } = useTheme();
   const avatarRadius = size / 2;
-  const shape = { width: size, height: size, borderRadius: avatarRadius };
+  const shape = useMemo(
+    () => ({ width: size, height: size, borderRadius: avatarRadius }),
+    [size, avatarRadius],
+  );
 
   const styles = useMemo(
     () =>
@@ -49,6 +52,8 @@ export function Avatar({ initials = 'P', photoUrl, size = 40, style }: Props) {
         source={{ uri: photoUrl }}
         style={[shape, styles.image, style as ImageStyle]}
         accessibilityLabel="Profile photo"
+        resizeMode="cover"
+        fadeDuration={0}
       />
     );
   }
@@ -61,3 +66,5 @@ export function Avatar({ initials = 'P', photoUrl, size = 40, style }: Props) {
     </View>
   );
 }
+
+export const Avatar = memo(AvatarComponent);

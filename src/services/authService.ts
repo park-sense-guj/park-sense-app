@@ -13,6 +13,7 @@ import { get, onValue, ref, set, update } from 'firebase/database';
 import { env } from '../config/env';
 import { getFirebaseAuth, getFirebaseDatabase } from '../config/firebase';
 import type { UserProfile, UserRole } from '../types';
+import { signOutGoogle } from './googleAuthService';
 
 function roleForEmail(email: string): UserRole {
   return email.trim().toLowerCase() === env.adminEmail ? 'admin' : 'user';
@@ -50,6 +51,7 @@ export async function loginUser(email: string, password: string) {
 }
 
 export async function logoutUser() {
+  await signOutGoogle();
   await firebaseSignOut(getFirebaseAuth());
 }
 
@@ -67,16 +69,32 @@ export async function ensureUserProfile(params: {
   userId: string;
   email: string;
   fullName?: string | null;
+  photoUrl?: string | null;
 }): Promise<void> {
   const profileRef = ref(getFirebaseDatabase(), `users/${params.userId}`);
   const snapshot = await get(profileRef);
   if (snapshot.exists()) {
+    const existing = snapshot.val() as UserProfile;
+    const patch: Partial<UserProfile> = {};
+    if (!existing.photoUrl && params.photoUrl) {
+      patch.photoUrl = params.photoUrl;
+    }
+    if (
+      params.fullName?.trim() &&
+      (!existing.fullName || existing.fullName === 'ParkSense User')
+    ) {
+      patch.fullName = params.fullName.trim();
+    }
+    if (Object.keys(patch).length > 0) {
+      await update(profileRef, patch);
+    }
     return;
   }
   const profile: UserProfile = {
     userId: params.userId,
     fullName: params.fullName?.trim() || 'ParkSense User',
     email: params.email.toLowerCase(),
+    photoUrl: params.photoUrl || undefined,
     registeredOn: Date.now(),
     role: roleForEmail(params.email),
   };
@@ -133,6 +151,19 @@ export async function updateUserPhoto(userId: string, photoUrl: string) {
 }
 
 let sessionPassword = '';
+
+export async function confirmCurrentPassword(password: string): Promise<void> {
+  if (password.length < 6) {
+    throw new Error('Enter your current password.');
+  }
+  const user = getFirebaseAuth().currentUser;
+  if (!user?.email) {
+    throw new Error('You need to be signed in.');
+  }
+  const credential = EmailAuthProvider.credential(user.email, password);
+  await reauthenticateWithCredential(user, credential);
+  setSessionPassword(password);
+}
 
 export function setSessionPassword(password: string) {
   sessionPassword = password;

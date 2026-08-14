@@ -57,6 +57,7 @@ const config: ExpoConfig = {
   plugins: [
     'expo-dev-client',
     'expo-secure-store',
+    '@react-native-google-signin/google-signin',
     [
       'expo-splash-screen',
       {

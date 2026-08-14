@@ -1,7 +1,7 @@
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -11,6 +11,7 @@ import { Button } from '../../components/Button';
 import { Screen } from '../../components/Screen';
 import { StatusBadge } from '../../components/StatusBadge';
 import { radius } from '../../config/theme';
+import { darkMapStyle, lightMapStyle } from '../../config/mapStyles';
 import { DEMO_LOT } from '../../data/demoLot';
 import { useParkingSlots } from '../../hooks/useParkingSlots';
 import type { UserStackParamList } from '../../navigation/types';
@@ -18,21 +19,26 @@ import { updatePreferredLocation } from '../../services/authService';
 import { createNotification } from '../../services/notificationService';
 import { useAuthStore } from '../../store/authStore';
 import { useTheme } from '../../theme/ThemeProvider';
+import { useNotifications } from '../../hooks/useNotifications';
 import type { ParkingSlot } from '../../types';
 
 export function MapScreen() {
-  const { colors, shadow, typography } = useTheme();
+  const { colors, typography, isDark } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<UserStackParamList>>();
   const insets = useSafeAreaInsets();
-  const profile = useAuthStore((state) => state.profile);
+  const fullName = useAuthStore((state) => state.profile?.fullName);
+  const photoUrl = useAuthStore((state) => state.profile?.photoUrl);
+  const userId = useAuthStore((state) => state.profile?.userId);
+  const { unreadCount } = useNotifications(userId);
   const { slots, stats, loading } = useParkingSlots();
   const [selected, setSelected] = useState<ParkingSlot | null>(null);
   const [watching, setWatching] = useState(false);
-  const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-  const initials = initialsFromName(profile?.fullName);
+  const initials = initialsFromName(fullName);
   const lotName = slots[0]?.locationName ?? 'No lot yet';
+  const firstLat = slots[0]?.latitude;
+  const firstLng = slots[0]?.longitude;
 
   const styles = useMemo(
     () =>
@@ -40,7 +46,7 @@ export function MapScreen() {
         top: { paddingHorizontal: 20, paddingBottom: 10 },
         greeting: { fontSize: 15, color: colors.textMuted },
         name: { fontSize: 26, fontWeight: '800', color: colors.text, letterSpacing: -0.6, marginTop: 2 },
-        mapShadow: {
+        mapWrap: {
           flex: 1,
           minHeight: 320,
           marginHorizontal: 12,
@@ -55,7 +61,6 @@ export function MapScreen() {
           borderColor: colors.border,
           backgroundColor: colors.mapSurface,
         },
-        mapPlaceholder: { flex: 1 },
         chip: {
           position: 'absolute',
           top: 12,
@@ -94,7 +99,6 @@ export function MapScreen() {
           padding: 18,
           borderWidth: 1,
           borderColor: colors.glassBorder,
-          ...shadow.clay,
         },
         handle: {
           alignSelf: 'center',
@@ -112,35 +116,32 @@ export function MapScreen() {
         dismissHit: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
         dismiss: { color: colors.textMuted, fontWeight: '600' },
       }),
-    [colors, shadow],
+    [colors],
   );
 
   const region = useMemo(
     () => ({
-      latitude: slots[0]?.latitude ?? DEMO_LOT.center.latitude,
-      longitude: slots[0]?.longitude ?? DEMO_LOT.center.longitude,
+      latitude: firstLat ?? DEMO_LOT.center.latitude,
+      longitude: firstLng ?? DEMO_LOT.center.longitude,
       latitudeDelta: DEMO_LOT.latitudeDelta,
       longitudeDelta: DEMO_LOT.longitudeDelta,
     }),
-    [slots],
+    [firstLat, firstLng],
   );
 
-  function onMapLayout(event: LayoutChangeEvent) {
-    const { width, height } = event.nativeEvent.layout;
-    if (width > 0 && height > 0 && (width !== mapSize.width || height !== mapSize.height)) {
-      setMapSize({ width, height });
-    }
-  }
+  const selectSlot = useCallback((slot: ParkingSlot) => {
+    setSelected(slot);
+  }, []);
 
   async function watchSlot(slot: ParkingSlot) {
-    if (!profile) {
+    if (!userId) {
       return;
     }
     setWatching(true);
     try {
-      await updatePreferredLocation(profile.userId, slot.locationName);
+      await updatePreferredLocation(userId, slot.locationName);
       await createNotification({
-        userId: profile.userId,
+        userId,
         slotId: slot.slotId,
         message: `We will notify you when a slot opens at ${slot.locationName}. Watching ${slot.slotNumber}.`,
       });
@@ -153,39 +154,47 @@ export function MapScreen() {
   }
 
   return (
-    <Screen padded={false} overlayTabBar>
+    <Screen padded={false} overlayTabBar blobs={false}>
       <View style={styles.top}>
-        <BrandHeader initials={initials} compact photoUrl={profile?.photoUrl} />
+        <BrandHeader
+          initials={initials}
+          compact
+          photoUrl={photoUrl}
+          alertsBadge={unreadCount}
+          onAlertsPress={() => navigation.navigate('Alerts')}
+        />
         <Text style={styles.greeting}>{greeting}</Text>
-        <Text style={styles.name}>{profile?.fullName ?? 'Driver'}</Text>
+        <Text style={styles.name}>{fullName ?? 'Driver'}</Text>
       </View>
 
-      <View style={[styles.mapShadow, shadow.clay]}>
-        <View style={styles.mapCard} onLayout={onMapLayout} collapsable={false}>
-          {mapSize.width > 0 ? (
-            <MapView
-              style={mapSize}
-              provider={PROVIDER_DEFAULT}
-              initialRegion={region}
-              showsUserLocation
-              mapPadding={{ top: 64, right: 8, bottom: 96, left: 8 }}
-              accessibilityLabel="Parking map"
-            >
-              {slots.map((slot) => (
-                <Marker
-                  key={slot.slotId}
-                  coordinate={{ latitude: slot.latitude, longitude: slot.longitude }}
-                  pinColor={slot.status === 'Available' ? colors.available : colors.occupied}
-                  title={slot.slotNumber}
-                  description={`${slot.status} · ${slot.locationName}`}
-                  onPress={() => setSelected(slot)}
-                  accessibilityLabel={`${slot.slotNumber}, ${slot.status}`}
-                />
-              ))}
-            </MapView>
-          ) : (
-            <View style={styles.mapPlaceholder} />
-          )}
+      <View style={styles.mapWrap}>
+        <View style={styles.mapCard} collapsable={false}>
+          <MapView
+            style={StyleSheet.absoluteFill}
+            provider={PROVIDER_DEFAULT}
+            initialRegion={region}
+            showsUserLocation
+            userInterfaceStyle={isDark ? 'dark' : 'light'}
+            customMapStyle={isDark ? darkMapStyle : lightMapStyle}
+            mapPadding={{ top: 64, right: 8, bottom: 96, left: 8 }}
+            accessibilityLabel="Parking map"
+            moveOnMarkerPress={false}
+            rotateEnabled={false}
+            pitchEnabled={false}
+          >
+            {slots.map((slot) => (
+              <Marker
+                key={slot.slotId}
+                coordinate={{ latitude: slot.latitude, longitude: slot.longitude }}
+                pinColor={slot.status === 'Available' ? colors.available : colors.occupied}
+                title={slot.slotNumber}
+                description={`${slot.status} · ${slot.locationName}`}
+                onPress={() => selectSlot(slot)}
+                tracksViewChanges={false}
+                accessibilityLabel={`${slot.slotNumber}, ${slot.status}`}
+              />
+            ))}
+          </MapView>
 
           <View style={styles.chip} pointerEvents="box-none">
             <Text style={styles.lot} numberOfLines={1}>

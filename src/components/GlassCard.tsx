@@ -1,6 +1,5 @@
-import { BlurView } from 'expo-blur';
-import { type ReactNode, useMemo } from 'react';
-import { Platform, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { memo, type ReactNode, useMemo } from 'react';
+import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { radius } from '../config/theme';
 import { useTheme } from '../theme/ThemeProvider';
@@ -8,12 +7,12 @@ import { useTheme } from '../theme/ThemeProvider';
 type Props = {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
+  /** Kept for call-site compatibility; blur is disabled for smoother scrolling. */
   intensity?: number;
 };
 
-export function GlassCard({ children, style, intensity = 28 }: Props) {
-  const { colors, isDark, shadow } = useTheme();
-  const tint = isDark ? 'dark' : 'light';
+function GlassCardComponent({ children, style }: Props) {
+  const { colors } = useTheme();
 
   const styles = useMemo(
     () =>
@@ -23,23 +22,14 @@ export function GlassCard({ children, style, intensity = 28 }: Props) {
           overflow: 'hidden',
           borderWidth: 1,
           borderColor: colors.glassBorder,
-          backgroundColor: colors.glass,
-          padding: 16,
-        },
-        android: {
           backgroundColor: colors.cardSolid,
+          padding: 16,
         },
       }),
     [colors],
   );
 
-  if (Platform.OS === 'ios') {
-    return (
-      <BlurView intensity={intensity} tint={tint} style={[styles.card, shadow.card, style]}>
-        {children}
-      </BlurView>
-    );
-  }
-
-  return <View style={[styles.card, styles.android, shadow.card, style]}>{children}</View>;
+  return <View style={[styles.card, style]}>{children}</View>;
 }
+
+export const GlassCard = memo(GlassCardComponent);

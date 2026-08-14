@@ -1,8 +1,6 @@
 import { useMemo } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { initialsFromName } from '../../components/Avatar';
-import { BrandHeader } from '../../components/BrandHeader';
 import { EmptyState } from '../../components/EmptyState';
 import { Screen } from '../../components/Screen';
 import { useNotifications } from '../../hooks/useNotifications';
@@ -14,7 +12,6 @@ export function NotificationsScreen() {
   const { colors } = useTheme();
   const profile = useAuthStore((state) => state.profile);
   const { items, unreadCount } = useNotifications(profile?.userId);
-  const initials = initialsFromName(profile?.fullName);
 
   const styles = useMemo(
     () =>
@@ -33,7 +30,6 @@ export function NotificationsScreen() {
 
   return (
     <Screen>
-      <BrandHeader initials={initials} photoUrl={profile?.photoUrl} />
       <Text style={styles.title}>Alerts</Text>
       <Text style={styles.subtitle}>
         {unreadCount > 0

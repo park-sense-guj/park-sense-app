@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo } from 'react';
+import { memo, type ReactNode, useMemo } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -11,14 +11,17 @@ type Props = {
   padded?: boolean;
   overlayTabBar?: boolean;
   edges?: ('top' | 'bottom')[];
+  /** Decorative blobs are expensive when every tab mounts them. Default off on map. */
+  blobs?: boolean;
 };
 
-export function Screen({
+function ScreenComponent({
   children,
   style,
   padded = true,
   overlayTabBar = false,
   edges = ['top'],
+  blobs = true,
 }: Props) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -40,7 +43,7 @@ export function Screen({
 
   return (
     <View style={styles.root}>
-      <BlobBackground />
+      {blobs ? <BlobBackground /> : null}
       <View
         style={[
           styles.content,
@@ -54,3 +57,5 @@ export function Screen({
     </View>
   );
 }
+
+export const Screen = memo(ScreenComponent);

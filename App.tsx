@@ -1,27 +1,19 @@
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { BiometricLock } from './src/components/BiometricLock';
 import { BlobBackground } from './src/components/BlobBackground';
 import { RootNavigator } from './src/navigation/RootNavigator';
-import { isBiometricEnabled } from './src/services/biometricService';
+import { configureGoogleSignIn } from './src/services/googleAuthService';
 import { useAuthStore } from './src/store/authStore';
 import { ThemeProvider, useTheme } from './src/theme/ThemeProvider';
 
 function AppContent() {
   const { colors, isDark } = useTheme();
   const initializing = useAuthStore((state) => state.initializing);
-  const firebaseUser = useAuthStore((state) => state.firebaseUser);
-  const profile = useAuthStore((state) => state.profile);
-  const biometricUnlocked = useAuthStore((state) => state.biometricUnlocked);
   const hydrate = useAuthStore((state) => state.hydrate);
-  const unlockBiometric = useAuthStore((state) => state.unlockBiometric);
-  const onUnlocked = useCallback(() => unlockBiometric(), [unlockBiometric]);
-  const [biometricEnabled, setBiometricEnabled] = useState(false);
-  const [biometricChecked, setBiometricChecked] = useState(false);
 
   const themedStyles = useMemo(
     () =>
@@ -63,33 +55,16 @@ function AppContent() {
     [colors],
   );
 
-  useEffect(() => hydrate(), [hydrate]);
-
   useEffect(() => {
-    let cancelled = false;
-    void isBiometricEnabled().then((enabled) => {
-      if (cancelled) {
-        return;
-      }
-      setBiometricEnabled(enabled);
-      setBiometricChecked(true);
-      if (!enabled) {
-        unlockBiometric();
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [firebaseUser, unlockBiometric]);
+    configureGoogleSignIn();
+  }, []);
 
-  const signedIn = Boolean(firebaseUser && profile);
-  const booting = initializing || (signedIn && !biometricChecked);
-  const showLock = signedIn && biometricEnabled && !biometricUnlocked;
+  useEffect(() => hydrate(), [hydrate]);
 
   return (
     <>
       <StatusBar style={isDark ? 'light' : 'dark'} />
-      {booting ? (
+      {initializing ? (
         <View style={themedStyles.boot}>
           <BlobBackground />
           <View style={themedStyles.ripple} />
@@ -102,8 +77,6 @@ function AppContent() {
           <Text style={themedStyles.tagline}>SMART PARKING · LIVE STATUS</Text>
           <ActivityIndicator color={colors.primary} style={themedStyles.spinner} />
         </View>
-      ) : showLock ? (
-        <BiometricLock onUnlocked={onUnlocked} />
       ) : (
         <RootNavigator />
       )}

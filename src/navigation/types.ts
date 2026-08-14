@@ -10,13 +10,13 @@ export type AuthStackParamList = {
 export type UserTabParamList = {
   MapTab: undefined;
   HistoryTab: undefined;
-  AlertsTab: undefined;
   ProfileTab: undefined;
 };
 
 export type UserStackParamList = {
   UserTabs: NavigatorScreenParams<UserTabParamList>;
   Navigate: { slot: ParkingSlot };
+  Alerts: undefined;
 };
 
 export type AdminTabParamList = {

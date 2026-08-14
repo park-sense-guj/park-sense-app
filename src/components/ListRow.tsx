@@ -23,7 +23,7 @@ export function ListRow({
   destructive,
   onPress,
 }: Props) {
-  const { colors, shadow } = useTheme();
+  const { colors } = useTheme();
 
   const styles = useMemo(
     () =>
@@ -56,7 +56,7 @@ export function ListRow({
 
   const content = (
     <View style={styles.row}>
-      <View style={[styles.iconWrap, destructive && styles.iconDanger, shadow.soft]}>
+      <View style={[styles.iconWrap, destructive && styles.iconDanger]}>
         <Ionicons name={icon} size={18} color={destructive ? colors.occupied : colors.primary} />
       </View>
       <View style={styles.copy}>

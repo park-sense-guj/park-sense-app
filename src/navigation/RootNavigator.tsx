@@ -8,7 +8,6 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useMemo } from 'react';
 
 import { FloatingTabBar } from '../components/FloatingTabBar';
-import { useNotifications } from '../hooks/useNotifications';
 import { AdminDashboardScreen } from '../screens/admin/AdminDashboardScreen';
 import { AdminSensorsScreen } from '../screens/admin/AdminSensorsScreen';
 import { AdminSlotsScreen } from '../screens/admin/AdminSlotsScreen';
@@ -44,14 +43,14 @@ function AuthNavigator() {
 
 function UserTabNavigator() {
   const { colors } = useTheme();
-  const profile = useAuthStore((state) => state.profile);
-  const { unreadCount } = useNotifications(profile?.userId);
 
   const tabOptions = useMemo(
     () => ({
       headerShown: false,
-      tabBarActiveTintColor: colors.primary,
-      tabBarInactiveTintColor: colors.textMuted,
+      lazy: true,
+      freezeOnBlur: true,
+      tabBarActiveTintColor: colors.tabActiveText,
+      tabBarInactiveTintColor: colors.tabInactive,
       tabBarHideOnKeyboard: true,
       tabBarStyle: {
         backgroundColor: 'transparent',
@@ -71,8 +70,13 @@ function UserTabNavigator() {
         component={MapScreen}
         options={{
           title: 'Home',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home-outline" color={color} size={size} accessibilityElementsHidden />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? 'home' : 'home-outline'}
+              color={color}
+              size={size}
+              accessibilityElementsHidden
+            />
           ),
         }}
       />
@@ -81,19 +85,13 @@ function UserTabNavigator() {
         component={HistoryScreen}
         options={{
           title: 'Activity',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="time-outline" color={color} size={size} accessibilityElementsHidden />
-          ),
-        }}
-      />
-      <UserTabs.Screen
-        name="AlertsTab"
-        component={NotificationsScreen}
-        options={{
-          title: 'Alerts',
-          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="notifications-outline" color={color} size={size} accessibilityElementsHidden />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? 'time' : 'time-outline'}
+              color={color}
+              size={size}
+              accessibilityElementsHidden
+            />
           ),
         }}
       />
@@ -102,8 +100,13 @@ function UserTabNavigator() {
         component={ProfileScreen}
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-outline" color={color} size={size} accessibilityElementsHidden />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? 'person' : 'person-outline'}
+              color={color}
+              size={size}
+              accessibilityElementsHidden
+            />
           ),
         }}
       />
@@ -130,6 +133,11 @@ function UserNavigator() {
         component={NavigateScreen}
         options={{ title: 'Navigation', headerBackTitle: 'Map' }}
       />
+      <UserStack.Screen
+        name="Alerts"
+        component={NotificationsScreen}
+        options={{ title: 'Alerts', headerBackTitle: 'Back' }}
+      />
     </UserStack.Navigator>
   );
 }
@@ -140,8 +148,10 @@ function AdminNavigator() {
   const tabOptions = useMemo(
     () => ({
       headerShown: false,
-      tabBarActiveTintColor: colors.primary,
-      tabBarInactiveTintColor: colors.textMuted,
+      lazy: true,
+      freezeOnBlur: true,
+      tabBarActiveTintColor: colors.tabActiveText,
+      tabBarInactiveTintColor: colors.tabInactive,
       tabBarHideOnKeyboard: true,
       tabBarStyle: {
         backgroundColor: 'transparent',
@@ -161,8 +171,13 @@ function AdminNavigator() {
         component={AdminDashboardScreen}
         options={{
           title: 'Home',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home-outline" color={color} size={size} accessibilityElementsHidden />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? 'home' : 'home-outline'}
+              color={color}
+              size={size}
+              accessibilityElementsHidden
+            />
           ),
         }}
       />
@@ -171,8 +186,13 @@ function AdminNavigator() {
         component={AdminSlotsScreen}
         options={{
           title: 'Slots',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="car-outline" color={color} size={size} accessibilityElementsHidden />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? 'car' : 'car-outline'}
+              color={color}
+              size={size}
+              accessibilityElementsHidden
+            />
           ),
         }}
       />
@@ -181,8 +201,13 @@ function AdminNavigator() {
         component={AdminSensorsScreen}
         options={{
           title: 'Sensors',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="hardware-chip-outline" color={color} size={size} accessibilityElementsHidden />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? 'hardware-chip' : 'hardware-chip-outline'}
+              color={color}
+              size={size}
+              accessibilityElementsHidden
+            />
           ),
         }}
       />
@@ -191,8 +216,13 @@ function AdminNavigator() {
         component={ProfileScreen}
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-outline" color={color} size={size} accessibilityElementsHidden />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? 'person' : 'person-outline'}
+              color={color}
+              size={size}
+              accessibilityElementsHidden
+            />
           ),
         }}
       />

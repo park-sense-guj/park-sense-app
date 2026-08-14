@@ -70,6 +70,9 @@ export function AdminSlotsScreen() {
         data={slots}
         keyExtractor={(item) => item.slotId}
         contentContainerStyle={styles.list}
+        removeClippedSubviews
+        initialNumToRender={6}
+        windowSize={7}
         ListEmptyComponent={
           loading ? (
             <Text style={styles.loading}>Loading slots…</Text>

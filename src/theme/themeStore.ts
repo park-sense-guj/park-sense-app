@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Appearance } from 'react-native';
 import { create } from 'zustand';
 
 import type { ThemePreference } from '../config/theme';
@@ -12,18 +13,27 @@ type ThemeState = {
   setPreference: (preference: ThemePreference) => Promise<void>;
 };
 
+function schemeFromStored(value: string | null): ThemePreference {
+  if (value === 'light' || value === 'dark') {
+    return value;
+  }
+  return Appearance.getColorScheme() === 'dark' ? 'dark' : 'light';
+}
+
 export const useThemeStore = create<ThemeState>((set) => ({
-  preference: 'system',
+  preference: 'light',
   ready: false,
   hydrate: async () => {
     try {
       const stored = await AsyncStorage.getItem(STORAGE_KEY);
-      if (stored === 'light' || stored === 'dark' || stored === 'system') {
-        set({ preference: stored, ready: true });
-        return;
+      const preference = schemeFromStored(stored);
+      set({ preference, ready: true });
+      if (stored !== preference) {
+        await AsyncStorage.setItem(STORAGE_KEY, preference);
       }
+      return;
     } catch {
-      // Keep system default if storage is unavailable.
+      // Keep light default if storage is unavailable.
     }
     set({ ready: true });
   },

@@ -16,9 +16,7 @@ type AuthState = {
   firebaseUser: User | null;
   profile: UserProfile | null;
   error: string | null;
-  biometricUnlocked: boolean;
   hydrate: () => () => void;
-  unlockBiometric: () => void;
   signOut: () => Promise<void>;
 };
 
@@ -27,7 +25,6 @@ export const useAuthStore = create<AuthState>((set) => ({
   firebaseUser: null,
   profile: null,
   error: null,
-  biometricUnlocked: false,
   hydrate: () => {
     let stopProfile: (() => void) | undefined;
     const unsubscribe = onAuthStateChanged(getFirebaseAuth(), async (user) => {
@@ -40,7 +37,6 @@ export const useAuthStore = create<AuthState>((set) => ({
           profile: null,
           initializing: false,
           error: null,
-          biometricUnlocked: true,
         });
         return;
       }
@@ -50,6 +46,7 @@ export const useAuthStore = create<AuthState>((set) => ({
           userId: user.uid,
           email: user.email,
           fullName: user.displayName,
+          photoUrl: user.photoURL,
         });
         stopProfile = listenUserProfile(user.uid, (profile) => {
           set({ firebaseUser: user, profile, initializing: false, error: null });
@@ -69,10 +66,9 @@ export const useAuthStore = create<AuthState>((set) => ({
       unsubscribe();
     };
   },
-  unlockBiometric: () => set({ biometricUnlocked: true }),
   signOut: async () => {
     clearSessionPassword();
     await logoutUser();
-    set({ firebaseUser: null, profile: null, biometricUnlocked: true });
+    set({ firebaseUser: null, profile: null });
   },
 }));

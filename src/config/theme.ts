@@ -1,6 +1,6 @@
 export type ThemeScheme = 'light' | 'dark';
 
-export type ThemePreference = 'system' | ThemeScheme;
+export type ThemePreference = ThemeScheme;
 
 export type ThemeColors = {
   primary: string;
@@ -66,7 +66,7 @@ export const lightColors: ThemeColors = {
   glass: 'rgba(255, 255, 255, 0.72)',
   glassBorder: 'rgba(255, 255, 255, 0.55)',
   dangerSoft: 'rgba(220, 38, 38, 0.1)',
-  tabPill: '#FFFFFF',
+  tabPill: 'rgba(255, 255, 255, 0.82)',
   tabActive: '#D8F3E3',
   tabActiveText: '#0F8A4B',
   tabInactive: '#8B9598',
@@ -105,8 +105,8 @@ export const darkColors: ThemeColors = {
   glass: 'rgba(22, 36, 32, 0.78)',
   glassBorder: 'rgba(255, 255, 255, 0.08)',
   dangerSoft: 'rgba(248, 113, 113, 0.14)',
-  tabPill: '#1A2A26',
-  tabActive: 'rgba(45, 212, 191, 0.22)',
+  tabPill: 'rgba(26, 42, 38, 0.82)',
+  tabActive: 'rgba(45, 212, 191, 0.2)',
   tabActiveText: '#5EEAD4',
   tabInactive: '#8A9E98',
   mapSurface: '#1A2A26',

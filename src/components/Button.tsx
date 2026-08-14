@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -22,7 +22,7 @@ type Props = PressableProps & {
   style?: StyleProp<ViewStyle>;
 };
 
-export function Button({
+function ButtonComponent({
   title,
   loading,
   variant = 'primary',
@@ -31,7 +31,7 @@ export function Button({
   onPress,
   ...rest
 }: Props) {
-  const { colors, shadow } = useTheme();
+  const { colors } = useTheme();
   const inverted = variant === 'primary' || variant === 'danger';
 
   const styles = useMemo(
@@ -57,7 +57,7 @@ export function Button({
           borderColor: colors.borderStrong,
         },
         disabled: { opacity: 0.5 },
-        pressed: { transform: [{ scale: 0.985 }], opacity: 0.92 },
+        pressed: { opacity: 0.88 },
         label: { color: colors.white, fontSize: 16, fontWeight: '700' },
         labelDark: { color: colors.primaryDark },
         labelGhost: { color: colors.text },
@@ -71,13 +71,14 @@ export function Button({
       accessibilityState={{ disabled: Boolean(disabled || loading), busy: Boolean(loading) }}
       disabled={disabled || loading}
       onPress={(event) => {
-        void Haptics.selectionAsync().catch(() => undefined);
+        if (variant === 'primary' || variant === 'danger') {
+          void Haptics.selectionAsync().catch(() => undefined);
+        }
         onPress?.(event);
       }}
       style={({ pressed }) => [
         styles.base,
         styles[variant],
-        inverted ? shadow.clay : shadow.soft,
         (disabled || loading) && styles.disabled,
         pressed && styles.pressed,
         style,
@@ -97,3 +98,5 @@ export function Button({
     </Pressable>
   );
 }
+
+export const Button = memo(ButtonComponent);

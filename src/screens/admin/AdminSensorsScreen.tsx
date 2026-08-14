@@ -47,6 +47,9 @@ export function AdminSensorsScreen() {
         data={sensors}
         keyExtractor={(item) => item.sensorId}
         contentContainerStyle={styles.list}
+        removeClippedSubviews
+        initialNumToRender={6}
+        windowSize={7}
         ListEmptyComponent={
           loading ? (
             <Text style={styles.loading}>Loading sensors…</Text>

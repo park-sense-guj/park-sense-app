@@ -1,5 +1,4 @@
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react';
-import { Appearance, useColorScheme } from 'react-native';
 
 import {
   colorsForScheme,
@@ -26,7 +25,6 @@ type ThemeContextValue = {
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const systemScheme = useColorScheme();
   const preference = useThemeStore((state) => state.preference);
   const hydrate = useThemeStore((state) => state.hydrate);
   const setPreference = useThemeStore((state) => state.setPreference);
@@ -35,19 +33,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     void hydrate();
   }, [hydrate]);
 
-  useEffect(() => {
-    const sub = Appearance.addChangeListener(() => {
-      // useColorScheme already updates; this keeps listeners in sync on older RN paths.
-    });
-    return () => sub.remove();
-  }, []);
-
-  const scheme: ThemeScheme = useMemo(() => {
-    if (preference === 'light' || preference === 'dark') {
-      return preference;
-    }
-    return systemScheme === 'dark' ? 'dark' : 'light';
-  }, [preference, systemScheme]);
+  const scheme: ThemeScheme = preference === 'dark' ? 'dark' : 'light';
 
   const value = useMemo<ThemeContextValue>(() => {
     const colors = colorsForScheme(scheme);

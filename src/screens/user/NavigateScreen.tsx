@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '../../components/Button';
 import { StatusBadge } from '../../components/StatusBadge';
 import { radius, spacing } from '../../config/theme';
+import { darkMapStyle, lightMapStyle } from '../../config/mapStyles';
 import { useUserLocation } from '../../hooks/useUserLocation';
 import type { UserStackParamList } from '../../navigation/types';
 import { endParkingSession, startParkingSession } from '../../services/historyService';
@@ -22,7 +23,7 @@ import { useTheme } from '../../theme/ThemeProvider';
 type Props = NativeStackScreenProps<UserStackParamList, 'Navigate'>;
 
 export function NavigateScreen({ route }: Props) {
-  const { colors, shadow, typography } = useTheme();
+  const { colors, typography, isDark } = useTheme();
   const { slot } = route.params;
   const insets = useSafeAreaInsets();
   const profile = useAuthStore((state) => state.profile);
@@ -44,7 +45,6 @@ export function NavigateScreen({ route }: Props) {
           borderTopRightRadius: radius.xl,
           borderTopWidth: 1,
           borderColor: colors.glassBorder,
-          ...shadow.clay,
         },
         row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
         copy: { flex: 1 },
@@ -52,7 +52,7 @@ export function NavigateScreen({ route }: Props) {
         actions: { flexDirection: 'row', gap: 10, marginTop: 10 },
         half: { flex: 1 },
       }),
-    [colors, shadow],
+    [colors],
   );
 
   const destination: LatLng = { latitude: slot.latitude, longitude: slot.longitude };
@@ -124,9 +124,18 @@ export function NavigateScreen({ route }: Props) {
           longitudeDelta: 0.02,
         }}
         showsUserLocation
+        userInterfaceStyle={isDark ? 'dark' : 'light'}
+        customMapStyle={isDark ? darkMapStyle : lightMapStyle}
+        rotateEnabled={false}
+        pitchEnabled={false}
         accessibilityLabel="Route to selected parking slot"
       >
-        <Marker coordinate={destination} pinColor={colors.available} title={slot.slotNumber} />
+        <Marker
+          coordinate={destination}
+          pinColor={colors.available}
+          title={slot.slotNumber}
+          tracksViewChanges={false}
+        />
         {routeResult ? (
           <Polyline coordinates={routeResult.coordinates} strokeColor={colors.primary} strokeWidth={5} />
         ) : null}

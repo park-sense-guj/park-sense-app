@@ -1,21 +1,16 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useState } from 'react';
-import {
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 
-import { BlobBackground } from '../../components/BlobBackground';
+import {
+  AuthDivider,
+  AuthFooterLink,
+  AuthShell,
+  BiometricSignInButton,
+  GoogleSignInButton,
+} from '../../components/AuthShell';
 import { Button } from '../../components/Button';
-import { GlassCard } from '../../components/GlassCard';
 import { TextField } from '../../components/TextField';
-import { spacing } from '../../config/theme';
 import type { AuthStackParamList } from '../../navigation/types';
 import { loginUser, setSessionPassword } from '../../services/authService';
 import {
@@ -26,55 +21,39 @@ import {
   isBiometricAvailable,
   isBiometricEnabled,
 } from '../../services/biometricService';
-import { useAuthStore } from '../../store/authStore';
+import {
+  isGoogleSignInConfigured,
+  readableGoogleSignInError,
+  signInWithGoogle,
+} from '../../services/googleAuthService';
 import { useTheme } from '../../theme/ThemeProvider';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
 export function LoginScreen({ navigation }: Props) {
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
-  const unlockBiometric = useAuthStore((state) => state.unlockBiometric);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [formError, setFormError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [biometricLabel, setBiometricLabel] = useState<string | null>(null);
+  const googleReady = isGoogleSignInConfigured();
 
   const styles = useMemo(
     () =>
       StyleSheet.create({
-        root: { flex: 1, backgroundColor: colors.background },
-        flex: { flex: 1 },
-        content: { flexGrow: 1, paddingHorizontal: spacing.lg, justifyContent: 'center' },
-        hero: { alignItems: 'center', marginBottom: 28 },
-        ripple: {
-          position: 'absolute',
-          width: 180,
-          height: 180,
-          borderRadius: 90,
-          borderWidth: 1,
-          borderColor: colors.border,
+        errorBox: {
+          backgroundColor: colors.occupiedSoft,
+          borderRadius: 12,
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+          marginBottom: 12,
         },
-        logo: {
-          width: 76,
-          height: 76,
-          borderRadius: 24,
-          backgroundColor: colors.primary,
-          alignItems: 'center',
-          justifyContent: 'center',
-        },
-        logoMark: { color: colors.white, fontSize: 32, fontWeight: '800' },
-        brand: { marginTop: 14, fontSize: 30, fontWeight: '800', color: colors.text },
-        accent: { color: colors.primary },
-        tag: { marginTop: 6, fontSize: 11, letterSpacing: 1.4, fontWeight: '700', color: colors.textMuted },
-        card: { padding: 20 },
-        heading: { fontSize: 20, fontWeight: '800', color: colors.text },
-        hint: { marginTop: 4, marginBottom: 16, color: colors.textMuted },
-        error: { color: colors.occupied, marginBottom: 12, fontWeight: '600' },
-        secondary: { marginTop: 10 },
+        error: { color: colors.occupied, fontWeight: '600', fontSize: 13, lineHeight: 18 },
+        primaryGap: { marginTop: 4 },
       }),
     [colors],
   );
@@ -103,12 +82,26 @@ export function LoginScreen({ navigation }: Props) {
     try {
       await loginUser(nextEmail, nextPassword);
       setSessionPassword(nextPassword);
-      unlockBiometric();
       await maybeOfferBiometrics(nextEmail, nextPassword);
     } catch (err) {
       setFormError(err instanceof Error ? readableAuthError(err.message) : 'Login failed.');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function onGoogleSignIn() {
+    setFormError('');
+    setGoogleLoading(true);
+    try {
+      const result = await signInWithGoogle();
+      if (result === 'cancelled') {
+        return;
+      }
+    } catch (error) {
+      setFormError(readableGoogleSignInError(error));
+    } finally {
+      setGoogleLoading(false);
     }
   }
 
@@ -126,79 +119,79 @@ export function LoginScreen({ navigation }: Props) {
   }
 
   return (
-    <View style={styles.root}>
-      <BlobBackground />
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView
-          contentContainerStyle={[
-            styles.content,
-            { paddingTop: insets.top + 36, paddingBottom: insets.bottom + 24 },
-          ]}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={styles.hero}>
-            <View style={styles.ripple} />
-            <View style={styles.logo}>
-              <Text style={styles.logoMark}>P</Text>
-            </View>
-            <Text style={styles.brand}>
-              Park<Text style={styles.accent}>Sense</Text>
-            </Text>
-            <Text style={styles.tag}>SMART PARKING · LIVE STATUS</Text>
-          </View>
+    <AuthShell
+      variant="login"
+      title="Welcome back"
+      subtitle="Sign in to see live parking availability near you."
+      footer={
+        <AuthFooterLink
+          prompt="New to ParkSense?"
+          action="Create an account"
+          onPress={() => navigation.navigate('Register')}
+        />
+      }
+    >
+      <TextField
+        label="Email"
+        value={email}
+        onChangeText={(value) => {
+          setEmail(value);
+          setEmailError('');
+        }}
+        keyboardType="email-address"
+        autoComplete="email"
+        textContentType="emailAddress"
+        placeholder="you@email.com"
+        error={emailError}
+      />
+      <TextField
+        label="Password"
+        value={password}
+        onChangeText={(value) => {
+          setPassword(value);
+          setPasswordError('');
+        }}
+        secureTextEntry
+        autoComplete="password"
+        textContentType="password"
+        placeholder="Your password"
+        error={passwordError}
+      />
+      {formError ? (
+        <View style={styles.errorBox}>
+          <Text style={styles.error}>{formError}</Text>
+        </View>
+      ) : null}
+      <Button
+        title="Log in"
+        onPress={() => void submitWithPassword(email, password)}
+        loading={loading}
+        disabled={googleLoading}
+        style={styles.primaryGap}
+      />
 
-          <GlassCard style={styles.card}>
-            <Text style={styles.heading}>Welcome back</Text>
-            <Text style={styles.hint}>Log in to see open slots around you.</Text>
-            <TextField
-              label="Email"
-              required
-              value={email}
-              onChangeText={(value) => {
-                setEmail(value);
-                setEmailError('');
-              }}
-              keyboardType="email-address"
-              autoComplete="email"
-              textContentType="emailAddress"
-              placeholder="you@email.com"
-              error={emailError}
-            />
-            <TextField
-              label="Password"
-              required
-              value={password}
-              onChangeText={(value) => {
-                setPassword(value);
-                setPasswordError('');
-              }}
-              secureTextEntry
-              autoComplete="password"
-              textContentType="password"
-              placeholder="••••••••"
-              error={passwordError}
-            />
-            {formError ? <Text style={styles.error}>{formError}</Text> : null}
-            <Button title="Log in" onPress={() => void submitWithPassword(email, password)} loading={loading} />
-            {biometricLabel ? (
-              <Button
-                title={`Sign in with ${biometricLabel}`}
-                variant="secondary"
-                onPress={() => void onBiometricLogin()}
-                style={styles.secondary}
-                accessibilityHint={`Uses ${biometricLabel} instead of typing your password`}
-              />
-            ) : null}
-            <Button
-              title="Create an account"
-              variant="ghost"
-              onPress={() => navigation.navigate('Register')}
-              style={styles.secondary}
-            />
-          </GlassCard>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </View>
+      <AuthDivider />
+
+      {googleReady ? (
+        <GoogleSignInButton
+          loading={googleLoading}
+          disabled={loading}
+          onPress={() => void onGoogleSignIn()}
+        />
+      ) : (
+        <View style={styles.errorBox}>
+          <Text style={styles.error}>Google Sign-In needs EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID in .env.</Text>
+        </View>
+      )}
+
+      {biometricLabel ? (
+        <BiometricSignInButton
+          label={biometricLabel}
+          disabled={loading || googleLoading}
+          onPress={() => void onBiometricLogin()}
+        />
+      ) : null}
+    </AuthShell>
   );
 }
 
@@ -209,7 +202,7 @@ async function maybeOfferBiometrics(email: string, password: string) {
     return;
   }
   const label = await getBiometricLabel();
-  Alert.alert(`Turn on ${label}?`, `Unlock ParkSense with ${label} next time instead of typing your password.`, [
+  Alert.alert(`Turn on ${label}?`, `Use ${label} next time you sign in, instead of typing your password.`, [
     { text: 'Not now', style: 'cancel' },
     {
       text: `Enable ${label}`,
