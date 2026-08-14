@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
 
-import { colors, hitSlop, radius } from '../config/theme';
+import { hitSlop, radius } from '../config/theme';
+import { useTheme } from '../theme/ThemeProvider';
 
 type Props = TextInputProps & {
   label: string;
@@ -17,8 +18,39 @@ export function TextField({
   secureTextEntry,
   ...rest
 }: Props) {
+  const { colors } = useTheme();
   const [hidden, setHidden] = useState(Boolean(secureTextEntry));
   const showToggle = Boolean(secureTextEntry);
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        wrap: { marginBottom: 14 },
+        label: { color: colors.text, fontSize: 13, fontWeight: '600', marginBottom: 6 },
+        required: { color: colors.occupied },
+        inputWrap: {
+          backgroundColor: colors.input,
+          borderWidth: 1,
+          borderColor: colors.inputBorder,
+          borderRadius: radius.md,
+          minHeight: 52,
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingHorizontal: 14,
+        },
+        input: {
+          flex: 1,
+          fontSize: 16,
+          color: colors.text,
+          minHeight: 52,
+          paddingVertical: 12,
+        },
+        inputError: { borderColor: colors.occupied, backgroundColor: colors.occupiedSoft },
+        eye: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+        error: { color: colors.occupied, marginTop: 6, fontSize: 13, fontWeight: '600' },
+      }),
+    [colors],
+  );
 
   return (
     <View style={styles.wrap}>
@@ -55,29 +87,3 @@ export function TextField({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  wrap: { marginBottom: 14 },
-  label: { color: colors.text, fontSize: 13, fontWeight: '600', marginBottom: 6 },
-  required: { color: colors.occupied },
-  inputWrap: {
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    minHeight: 52,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-  },
-  input: {
-    flex: 1,
-    fontSize: 16,
-    color: colors.text,
-    minHeight: 52,
-    paddingVertical: 12,
-  },
-  inputError: { borderColor: colors.occupied, backgroundColor: colors.occupiedSoft },
-  eye: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  error: { color: colors.occupied, marginTop: 6, fontSize: 13, fontWeight: '600' },
-});

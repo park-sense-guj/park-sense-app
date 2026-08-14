@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, shadow } from '../config/theme';
+import { useTheme } from '../theme/ThemeProvider';
 
 type Props = {
   icon: keyof typeof Ionicons.glyphMap;
@@ -22,6 +23,37 @@ export function ListRow({
   destructive,
   onPress,
 }: Props) {
+  const { colors, shadow } = useTheme();
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        row: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 12,
+          paddingVertical: 12,
+          minHeight: 56,
+        },
+        iconWrap: {
+          width: 40,
+          height: 40,
+          borderRadius: 20,
+          backgroundColor: colors.primarySoft,
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+        iconDanger: { backgroundColor: colors.occupiedSoft },
+        copy: { flex: 1 },
+        title: { fontSize: 16, fontWeight: '700', color: colors.text },
+        subtitle: { marginTop: 2, fontSize: 13, color: colors.textMuted, lineHeight: 18 },
+        trailing: { color: colors.textMuted, fontWeight: '600', marginRight: 4 },
+        dangerText: { color: colors.occupied },
+        pressed: { opacity: 0.72 },
+      }),
+    [colors],
+  );
+
   const content = (
     <View style={styles.row}>
       <View style={[styles.iconWrap, destructive && styles.iconDanger, shadow.soft]}>
@@ -53,28 +85,3 @@ export function ListRow({
     </Pressable>
   );
 }
-
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-    minHeight: 56,
-  },
-  iconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconDanger: { backgroundColor: colors.occupiedSoft },
-  copy: { flex: 1 },
-  title: { fontSize: 16, fontWeight: '700', color: colors.text },
-  subtitle: { marginTop: 2, fontSize: 13, color: colors.textMuted, lineHeight: 18 },
-  trailing: { color: colors.textMuted, fontWeight: '600', marginRight: 4 },
-  dangerText: { color: colors.occupied },
-  pressed: { opacity: 0.72 },
-});

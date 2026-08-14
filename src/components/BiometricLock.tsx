@@ -1,8 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
-import { colors } from '../config/theme';
 import {
   authenticateWithBiometrics,
   getBiometricLabel,
@@ -10,15 +9,58 @@ import {
 } from '../services/biometricService';
 import { BlobBackground } from './BlobBackground';
 import { Button } from './Button';
+import { useTheme } from '../theme/ThemeProvider';
 
 type Props = {
   onUnlocked: () => void;
 };
 
 export function BiometricLock({ onUnlocked }: Props) {
+  const { colors } = useTheme();
   const [label, setLabel] = useState('Biometrics');
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        root: { flex: 1, backgroundColor: colors.background },
+        center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 },
+        ripple: {
+          position: 'absolute',
+          width: 260,
+          height: 260,
+          borderRadius: 130,
+          borderWidth: 1,
+          borderColor: colors.border,
+        },
+        rippleInner: {
+          position: 'absolute',
+          width: 190,
+          height: 190,
+          borderRadius: 95,
+          borderWidth: 1,
+          borderColor: colors.borderStrong,
+        },
+        logo: {
+          width: 84,
+          height: 84,
+          borderRadius: 26,
+          backgroundColor: colors.primary,
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+        logoMark: { color: colors.white, fontSize: 36, fontWeight: '800' },
+        brand: { marginTop: 16, fontSize: 28, fontWeight: '800', color: colors.text },
+        accent: { color: colors.primary },
+        tag: { marginTop: 8, fontSize: 11, fontWeight: '700', letterSpacing: 1.2, color: colors.textMuted },
+        iconWrap: { marginTop: 28 },
+        spinner: { marginTop: 18 },
+        error: { marginTop: 14, color: colors.occupied, textAlign: 'center', fontWeight: '600' },
+        button: { marginTop: 24, alignSelf: 'stretch' },
+      }),
+    [colors],
+  );
 
   useEffect(() => {
     void (async () => {
@@ -78,40 +120,3 @@ export function BiometricLock({ onUnlocked }: Props) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.background },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 },
-  ripple: {
-    position: 'absolute',
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    borderWidth: 1,
-    borderColor: 'rgba(15, 118, 110, 0.18)',
-  },
-  rippleInner: {
-    position: 'absolute',
-    width: 190,
-    height: 190,
-    borderRadius: 95,
-    borderWidth: 1,
-    borderColor: 'rgba(15, 118, 110, 0.12)',
-  },
-  logo: {
-    width: 84,
-    height: 84,
-    borderRadius: 26,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoMark: { color: colors.white, fontSize: 36, fontWeight: '800' },
-  brand: { marginTop: 16, fontSize: 28, fontWeight: '800', color: colors.text },
-  accent: { color: colors.primary },
-  tag: { marginTop: 8, fontSize: 11, fontWeight: '700', letterSpacing: 1.2, color: colors.textMuted },
-  iconWrap: { marginTop: 28 },
-  spinner: { marginTop: 18 },
-  error: { marginTop: 14, color: colors.occupied, textAlign: 'center', fontWeight: '600' },
-  button: { marginTop: 24, alignSelf: 'stretch' },
-});

@@ -1,14 +1,80 @@
 import { Ionicons } from '@expo/vector-icons';
 import { BottomTabBarHeightCallbackContext, type BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { useContext } from 'react';
+import { useContext, useMemo } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors } from '../config/theme';
+import { useTheme } from '../theme/ThemeProvider';
 
 export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const onHeightChange = useContext(BottomTabBarHeightCallbackContext);
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        wrap: {
+          alignItems: 'center',
+          paddingTop: 6,
+          backgroundColor: 'transparent',
+        },
+        pill: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          backgroundColor: colors.tabPill,
+          borderRadius: 40,
+          paddingVertical: 6,
+          paddingHorizontal: 6,
+          ...Platform.select({
+            ios: {
+              shadowColor: '#000000',
+              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: 0.1,
+              shadowRadius: 14,
+            },
+            android: {
+              elevation: 10,
+            },
+          }),
+        },
+        item: {
+          width: 78,
+          minHeight: 58,
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: 32,
+          gap: 2,
+          paddingVertical: 8,
+        },
+        itemActive: {
+          backgroundColor: colors.tabActive,
+        },
+        label: {
+          fontSize: 12,
+          fontWeight: '500',
+          color: colors.tabInactive,
+        },
+        labelActive: {
+          color: colors.tabActiveText,
+          fontWeight: '600',
+        },
+        badge: {
+          position: 'absolute',
+          top: -4,
+          right: -10,
+          minWidth: 16,
+          height: 16,
+          borderRadius: 8,
+          backgroundColor: colors.occupied,
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingHorizontal: 4,
+        },
+        badgeText: { color: colors.white, fontSize: 9, fontWeight: '800' },
+      }),
+    [colors],
+  );
 
   return (
     <View
@@ -24,7 +90,7 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
             typeof options.tabBarLabel === 'string'
               ? options.tabBarLabel
               : options.title ?? route.name;
-          const color = focused ? '#0F8A4B' : '#8B9598';
+          const color = focused ? colors.tabActiveText : colors.tabInactive;
           const renderedIcon = options.tabBarIcon?.({
             focused,
             color,
@@ -65,64 +131,3 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  wrap: {
-    alignItems: 'center',
-    paddingTop: 6,
-    backgroundColor: 'transparent',
-  },
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.white,
-    borderRadius: 40,
-    paddingVertical: 6,
-    paddingHorizontal: 6,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.1,
-        shadowRadius: 14,
-      },
-      android: {
-        elevation: 10,
-      },
-    }),
-  },
-  item: {
-    width: 78,
-    minHeight: 58,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 32,
-    gap: 2,
-    paddingVertical: 8,
-  },
-  itemActive: {
-    backgroundColor: '#D8F3E3',
-  },
-  label: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#8B9598',
-  },
-  labelActive: {
-    color: '#0F8A4B',
-    fontWeight: '600',
-  },
-  badge: {
-    position: 'absolute',
-    top: -4,
-    right: -10,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: colors.occupied,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  badgeText: { color: colors.white, fontSize: 9, fontWeight: '800' },
-});

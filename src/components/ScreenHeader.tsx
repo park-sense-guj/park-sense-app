@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import { typography } from '../config/theme';
+import { useTheme } from '../theme/ThemeProvider';
 
 type Props = {
   title: string;
@@ -8,6 +8,8 @@ type Props = {
 };
 
 export function ScreenHeader({ title, subtitle }: Props) {
+  const { typography } = useTheme();
+
   return (
     <View style={styles.wrap} accessibilityRole="header">
       <Text style={typography.title} maxFontSizeMultiplier={1.4}>

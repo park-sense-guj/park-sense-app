@@ -1,5 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -16,7 +16,7 @@ import { Button } from '../../components/Button';
 import { ListRow } from '../../components/ListRow';
 import { Screen } from '../../components/Screen';
 import { TextField } from '../../components/TextField';
-import { colors } from '../../config/theme';
+import type { ThemePreference } from '../../config/theme';
 import {
   getSessionPassword,
   updateFullName,
@@ -33,8 +33,16 @@ import {
   isBiometricEnabled,
 } from '../../services/biometricService';
 import { useAuthStore } from '../../store/authStore';
+import { useTheme } from '../../theme/ThemeProvider';
+
+const APPEARANCE_OPTIONS: { value: ThemePreference; title: string; subtitle: string; icon: 'phone-portrait-outline' | 'sunny-outline' | 'moon-outline' }[] = [
+  { value: 'system', title: 'System', subtitle: 'Match device light or dark mode', icon: 'phone-portrait-outline' },
+  { value: 'light', title: 'Light', subtitle: 'Always use light theme', icon: 'sunny-outline' },
+  { value: 'dark', title: 'Dark', subtitle: 'Always use dark theme', icon: 'moon-outline' },
+];
 
 export function ProfileScreen() {
+  const { colors, preference, setPreference } = useTheme();
   const profile = useAuthStore((state) => state.profile);
   const signOut = useAuthStore((state) => state.signOut);
   const [biometricOn, setBiometricOn] = useState(false);
@@ -46,6 +54,27 @@ export function ProfileScreen() {
   const [saving, setSaving] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
   const initials = initialsFromName(profile?.fullName);
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        flex: { flex: 1 },
+        scroll: { paddingBottom: 12 },
+        title: { fontSize: 32, fontWeight: '800', color: colors.text, letterSpacing: -0.6 },
+        subtitle: { marginTop: 6, marginBottom: 8, color: colors.textMuted },
+        photoBlock: { alignItems: 'center', marginTop: 18, marginBottom: 8, gap: 10 },
+        photoHint: { color: colors.primaryDark, fontWeight: '700' },
+        section: {
+          marginTop: 22,
+          marginBottom: 4,
+          fontSize: 12,
+          fontWeight: '800',
+          letterSpacing: 1,
+          color: colors.textMuted,
+        },
+      }),
+    [colors],
+  );
 
   const nameDirty = fullName.trim() !== (profile?.fullName ?? '');
   const emailDirty = email.trim().toLowerCase() !== (profile?.email ?? '');
@@ -73,7 +102,7 @@ export function ProfileScreen() {
       return;
     }
     if (biometricOn) {
-      Alert.alert(`Turn off ${biometricLabel}?`, 'You’ll need your password the next time you sign in.', [
+      Alert.alert(`Turn off ${biometricLabel}?`, "You'll need your password the next time you sign in.", [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Turn off',
@@ -241,6 +270,19 @@ export function ProfileScreen() {
           ) : null}
           <Button title="Save changes" loading={saving} disabled={!dirty} onPress={() => void saveProfile()} />
 
+          <Text style={styles.section}>APPEARANCE</Text>
+          {APPEARANCE_OPTIONS.map((option) => (
+            <ListRow
+              key={option.value}
+              icon={option.icon}
+              title={option.title}
+              subtitle={option.subtitle}
+              trailing={preference === option.value ? 'Selected' : undefined}
+              chevron={false}
+              onPress={() => void setPreference(option.value)}
+            />
+          ))}
+
           <Text style={styles.section}>SECURITY</Text>
           <ListRow
             icon={biometricLabel.includes('Face') ? 'scan-outline' : 'finger-print-outline'}
@@ -284,20 +326,3 @@ function readableProfileError(error: unknown): string {
   }
   return message;
 }
-
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  scroll: { paddingBottom: 12 },
-  title: { fontSize: 32, fontWeight: '800', color: colors.text, letterSpacing: -0.6 },
-  subtitle: { marginTop: 6, marginBottom: 8, color: colors.textMuted },
-  photoBlock: { alignItems: 'center', marginTop: 18, marginBottom: 8, gap: 10 },
-  photoHint: { color: colors.primaryDark, fontWeight: '700' },
-  section: {
-    marginTop: 22,
-    marginBottom: 4,
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 1,
-    color: colors.textMuted,
-  },
-});

@@ -1,5 +1,5 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -14,14 +14,16 @@ import { BlobBackground } from '../../components/BlobBackground';
 import { Button } from '../../components/Button';
 import { GlassCard } from '../../components/GlassCard';
 import { TextField } from '../../components/TextField';
-import { colors, spacing } from '../../config/theme';
+import { spacing } from '../../config/theme';
 import type { AuthStackParamList } from '../../navigation/types';
 import { registerUser, setSessionPassword } from '../../services/authService';
 import { useAuthStore } from '../../store/authStore';
+import { useTheme } from '../../theme/ThemeProvider';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Register'>;
 
 export function RegisterScreen({ navigation }: Props) {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const unlockBiometric = useAuthStore((state) => state.unlockBiometric);
   const [fullName, setFullName] = useState('');
@@ -31,6 +33,23 @@ export function RegisterScreen({ navigation }: Props) {
   const [errors, setErrors] = useState({ fullName: '', email: '', password: '' });
   const [formError, setFormError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        root: { flex: 1, backgroundColor: colors.background },
+        flex: { flex: 1 },
+        content: { flexGrow: 1, paddingHorizontal: spacing.lg, justifyContent: 'center' },
+        brand: { fontSize: 20, fontWeight: '800', color: colors.text },
+        accent: { color: colors.primary },
+        title: { marginTop: 18, fontSize: 32, fontWeight: '800', color: colors.text, letterSpacing: -0.6 },
+        lede: { marginTop: 8, marginBottom: spacing.lg, color: colors.textMuted, lineHeight: 20 },
+        card: { padding: 20 },
+        error: { color: colors.occupied, marginBottom: 12, fontWeight: '600' },
+        secondary: { marginTop: 10 },
+      }),
+    [colors],
+  );
 
   async function onSubmit() {
     setFormError('');
@@ -145,16 +164,3 @@ function readableRegisterError(message: string): string {
   }
   return 'Could not create the account. Try again.';
 }
-
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.background },
-  flex: { flex: 1 },
-  content: { flexGrow: 1, paddingHorizontal: spacing.lg, justifyContent: 'center' },
-  brand: { fontSize: 20, fontWeight: '800', color: colors.text },
-  accent: { color: colors.primary },
-  title: { marginTop: 18, fontSize: 32, fontWeight: '800', color: colors.text, letterSpacing: -0.6 },
-  lede: { marginTop: 8, marginBottom: spacing.lg, color: colors.textMuted, lineHeight: 20 },
-  card: { padding: 20 },
-  error: { color: colors.occupied, marginBottom: 12, fontWeight: '600' },
-  secondary: { marginTop: 10 },
-});

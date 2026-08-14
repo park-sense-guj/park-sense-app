@@ -1,5 +1,5 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -15,7 +15,7 @@ import { BlobBackground } from '../../components/BlobBackground';
 import { Button } from '../../components/Button';
 import { GlassCard } from '../../components/GlassCard';
 import { TextField } from '../../components/TextField';
-import { colors, spacing } from '../../config/theme';
+import { spacing } from '../../config/theme';
 import type { AuthStackParamList } from '../../navigation/types';
 import { loginUser, setSessionPassword } from '../../services/authService';
 import {
@@ -27,10 +27,12 @@ import {
   isBiometricEnabled,
 } from '../../services/biometricService';
 import { useAuthStore } from '../../store/authStore';
+import { useTheme } from '../../theme/ThemeProvider';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
 export function LoginScreen({ navigation }: Props) {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const unlockBiometric = useAuthStore((state) => state.unlockBiometric);
   const [email, setEmail] = useState('');
@@ -40,6 +42,42 @@ export function LoginScreen({ navigation }: Props) {
   const [formError, setFormError] = useState('');
   const [loading, setLoading] = useState(false);
   const [biometricLabel, setBiometricLabel] = useState<string | null>(null);
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        root: { flex: 1, backgroundColor: colors.background },
+        flex: { flex: 1 },
+        content: { flexGrow: 1, paddingHorizontal: spacing.lg, justifyContent: 'center' },
+        hero: { alignItems: 'center', marginBottom: 28 },
+        ripple: {
+          position: 'absolute',
+          width: 180,
+          height: 180,
+          borderRadius: 90,
+          borderWidth: 1,
+          borderColor: colors.border,
+        },
+        logo: {
+          width: 76,
+          height: 76,
+          borderRadius: 24,
+          backgroundColor: colors.primary,
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+        logoMark: { color: colors.white, fontSize: 32, fontWeight: '800' },
+        brand: { marginTop: 14, fontSize: 30, fontWeight: '800', color: colors.text },
+        accent: { color: colors.primary },
+        tag: { marginTop: 6, fontSize: 11, letterSpacing: 1.4, fontWeight: '700', color: colors.textMuted },
+        card: { padding: 20 },
+        heading: { fontSize: 20, fontWeight: '800', color: colors.text },
+        hint: { marginTop: 4, marginBottom: 16, color: colors.textMuted },
+        error: { color: colors.occupied, marginBottom: 12, fontWeight: '600' },
+        secondary: { marginTop: 10 },
+      }),
+    [colors],
+  );
 
   useEffect(() => {
     void (async () => {
@@ -199,35 +237,3 @@ function readableAuthError(message: string): string {
   }
   return 'Login failed. Check your details and try again.';
 }
-
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.background },
-  flex: { flex: 1 },
-  content: { flexGrow: 1, paddingHorizontal: spacing.lg, justifyContent: 'center' },
-  hero: { alignItems: 'center', marginBottom: 28 },
-  ripple: {
-    position: 'absolute',
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    borderWidth: 1,
-    borderColor: 'rgba(15, 118, 110, 0.16)',
-  },
-  logo: {
-    width: 76,
-    height: 76,
-    borderRadius: 24,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoMark: { color: colors.white, fontSize: 32, fontWeight: '800' },
-  brand: { marginTop: 14, fontSize: 30, fontWeight: '800', color: colors.text },
-  accent: { color: colors.primary },
-  tag: { marginTop: 6, fontSize: 11, letterSpacing: 1.4, fontWeight: '700', color: colors.textMuted },
-  card: { padding: 20 },
-  heading: { fontSize: 20, fontWeight: '800', color: colors.text },
-  hint: { marginTop: 4, marginBottom: 16, color: colors.textMuted },
-  error: { color: colors.occupied, marginBottom: 12, fontWeight: '600' },
-  secondary: { marginTop: 10 },
-});

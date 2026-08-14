@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { initialsFromName } from '../../components/Avatar';
@@ -7,17 +7,41 @@ import { Button } from '../../components/Button';
 import { GlassCard } from '../../components/GlassCard';
 import { Screen } from '../../components/Screen';
 import { StatCard } from '../../components/StatCard';
-import { colors } from '../../config/theme';
 import { useParkingSlots } from '../../hooks/useParkingSlots';
 import { useAuthStore } from '../../store/authStore';
 import { seedDemoLot, seedDemoLotIfEmpty } from '../../services/seedService';
+import { useTheme } from '../../theme/ThemeProvider';
 
 export function AdminDashboardScreen() {
+  const { colors } = useTheme();
   const profile = useAuthStore((state) => state.profile);
   const { stats, slots, loading } = useParkingSlots();
   const initials = initialsFromName(profile?.fullName ?? 'A');
   const [busy, setBusy] = useState(false);
   const occupancy = stats.total === 0 ? 0 : Math.round((stats.occupied / stats.total) * 100);
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        flex: { flex: 1 },
+        content: { paddingBottom: 28, gap: 0 },
+        greeting: { fontSize: 16, color: colors.textMuted },
+        name: { fontSize: 32, fontWeight: '800', color: colors.text, letterSpacing: -0.7, marginTop: 2 },
+        lede: { marginTop: 6, marginBottom: 18, color: colors.textMuted },
+        hero: { marginBottom: 14, padding: 18 },
+        heroLabel: { color: colors.textMuted, fontWeight: '700' },
+        heroValue: { fontSize: 36, fontWeight: '800', color: colors.primaryDark, letterSpacing: -1, marginVertical: 6 },
+        track: { height: 10, backgroundColor: colors.occupiedSoft, borderRadius: 99, overflow: 'hidden' },
+        fill: { height: '100%', backgroundColor: colors.occupied },
+        heroHint: { marginTop: 10, color: colors.textMuted },
+        row: { flexDirection: 'row', gap: 12, marginBottom: 12 },
+        note: { marginBottom: 16, padding: 16 },
+        noteTitle: { fontWeight: '700', color: colors.text, marginBottom: 6 },
+        noteBody: { color: colors.textMuted, lineHeight: 20 },
+        spaced: { marginTop: 10 },
+      }),
+    [colors],
+  );
 
   async function seed(force: boolean) {
     setBusy(true);
@@ -107,22 +131,3 @@ export function AdminDashboardScreen() {
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  content: { paddingBottom: 28, gap: 0 },
-  greeting: { fontSize: 16, color: colors.textMuted },
-  name: { fontSize: 32, fontWeight: '800', color: colors.text, letterSpacing: -0.7, marginTop: 2 },
-  lede: { marginTop: 6, marginBottom: 18, color: colors.textMuted },
-  hero: { marginBottom: 14, padding: 18 },
-  heroLabel: { color: colors.textMuted, fontWeight: '700' },
-  heroValue: { fontSize: 36, fontWeight: '800', color: colors.primaryDark, letterSpacing: -1, marginVertical: 6 },
-  track: { height: 10, backgroundColor: colors.occupiedSoft, borderRadius: 99, overflow: 'hidden' },
-  fill: { height: '100%', backgroundColor: colors.occupied },
-  heroHint: { marginTop: 10, color: colors.textMuted },
-  row: { flexDirection: 'row', gap: 12, marginBottom: 12 },
-  note: { marginBottom: 16, padding: 16 },
-  noteTitle: { fontWeight: '700', color: colors.text, marginBottom: 6 },
-  noteBody: { color: colors.textMuted, lineHeight: 20 },
-  spaced: { marginTop: 10 },
-});

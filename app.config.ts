@@ -14,7 +14,7 @@ const config: ExpoConfig = {
   version: '1.0.0',
   orientation: 'portrait',
   icon: './assets/icon.png',
-  userInterfaceStyle: 'light',
+  userInterfaceStyle: 'automatic',
   ios: {
     supportsTablet: true,
     bundleIdentifier: 'com.parksense.app',

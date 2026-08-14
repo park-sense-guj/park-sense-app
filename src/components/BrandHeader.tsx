@@ -1,7 +1,8 @@
+import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors } from '../config/theme';
 import { Avatar } from './Avatar';
+import { useTheme } from '../theme/ThemeProvider';
 
 type Props = {
   initials?: string;
@@ -10,6 +11,31 @@ type Props = {
 };
 
 export function BrandHeader({ initials = 'P', compact = false, photoUrl }: Props) {
+  const { colors } = useTheme();
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        row: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 18,
+        },
+        rowCompact: {
+          marginBottom: 8,
+        },
+        brand: {
+          fontSize: 22,
+          fontWeight: '800',
+          color: colors.text,
+          letterSpacing: -0.4,
+        },
+        brandAccent: { color: colors.primary },
+      }),
+    [colors],
+  );
+
   return (
     <View style={[styles.row, compact && styles.rowCompact]}>
       <Text style={styles.brand} accessibilityRole="header">
@@ -19,22 +45,3 @@ export function BrandHeader({ initials = 'P', compact = false, photoUrl }: Props
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 18,
-  },
-  rowCompact: {
-    marginBottom: 8,
-  },
-  brand: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: colors.text,
-    letterSpacing: -0.4,
-  },
-  brandAccent: { color: colors.primary },
-});

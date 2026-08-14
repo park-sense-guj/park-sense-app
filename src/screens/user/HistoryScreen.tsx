@@ -1,20 +1,38 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
 
 import { initialsFromName } from '../../components/Avatar';
 import { BrandHeader } from '../../components/BrandHeader';
 import { EmptyState } from '../../components/EmptyState';
 import { Screen } from '../../components/Screen';
-import { colors } from '../../config/theme';
 import { listenParkingHistory } from '../../services/historyService';
 import { useAuthStore } from '../../store/authStore';
+import { useTheme } from '../../theme/ThemeProvider';
 import type { ParkingHistory } from '../../types';
 
 export function HistoryScreen() {
+  const { colors } = useTheme();
   const profile = useAuthStore((state) => state.profile);
   const [items, setItems] = useState<ParkingHistory[]>([]);
   const [ready, setReady] = useState(false);
   const initials = initialsFromName(profile?.fullName);
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        title: { fontSize: 32, fontWeight: '800', color: colors.text, letterSpacing: -0.6 },
+        subtitle: { marginTop: 6, marginBottom: 18, color: colors.textMuted, lineHeight: 20 },
+        list: { paddingBottom: 12 },
+        item: { paddingVertical: 14 },
+        kicker: { fontSize: 11, fontWeight: '800', letterSpacing: 1, color: colors.primary },
+        body: { marginTop: 6, fontSize: 17, fontWeight: '700', color: colors.text },
+        time: { marginTop: 6, color: colors.textMuted, fontSize: 13 },
+        divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
+        loading: { paddingTop: 48, alignItems: 'center', gap: 12 },
+        loadingText: { color: colors.textMuted, fontWeight: '600' },
+      }),
+    [colors],
+  );
 
   useEffect(() => {
     if (!profile) {
@@ -46,7 +64,7 @@ export function HistoryScreen() {
             <EmptyState
               icon="time-outline"
               title="No sessions yet"
-              subtitle="Navigate to a slot and tap I’m parked to start a history record."
+              subtitle="Navigate to a slot and tap I'm parked to start a history record."
             />
           }
           renderItem={({ item }) => (
@@ -70,16 +88,3 @@ export function HistoryScreen() {
 function formatTime(value: number): string {
   return new Date(value).toLocaleString();
 }
-
-const styles = StyleSheet.create({
-  title: { fontSize: 32, fontWeight: '800', color: colors.text, letterSpacing: -0.6 },
-  subtitle: { marginTop: 6, marginBottom: 18, color: colors.textMuted, lineHeight: 20 },
-  list: { paddingBottom: 12 },
-  item: { paddingVertical: 14 },
-  kicker: { fontSize: 11, fontWeight: '800', letterSpacing: 1, color: colors.primary },
-  body: { marginTop: 6, fontSize: 17, fontWeight: '700', color: colors.text },
-  time: { marginTop: 6, color: colors.textMuted, fontSize: 13 },
-  divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
-  loading: { paddingTop: 48, alignItems: 'center', gap: 12 },
-  loadingText: { color: colors.textMuted, fontWeight: '600' },
-});

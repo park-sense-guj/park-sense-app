@@ -1,9 +1,9 @@
-import { type ReactNode } from 'react';
+import { type ReactNode, useMemo } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors } from '../config/theme';
 import { BlobBackground } from './BlobBackground';
+import { useTheme } from '../theme/ThemeProvider';
 
 type Props = {
   children: ReactNode;
@@ -20,6 +20,7 @@ export function Screen({
   overlayTabBar = false,
   edges = ['top'],
 }: Props) {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const paddingTop = edges.includes('top') ? insets.top + 8 : 0;
   const paddingBottom = overlayTabBar
@@ -27,6 +28,15 @@ export function Screen({
     : edges.includes('bottom')
       ? Math.max(insets.bottom, 12) + 24
       : 12;
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        root: { flex: 1, backgroundColor: colors.background },
+        content: { flex: 1 },
+      }),
+    [colors],
+  );
 
   return (
     <View style={styles.root}>
@@ -44,8 +54,3 @@ export function Screen({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.background },
-  content: { flex: 1 },
-});

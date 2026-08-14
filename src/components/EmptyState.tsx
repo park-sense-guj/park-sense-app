@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors, typography } from '../config/theme';
 import { Button } from './Button';
+import { useTheme } from '../theme/ThemeProvider';
 
 type Props = {
   title: string;
@@ -13,6 +14,28 @@ type Props = {
 };
 
 export function EmptyState({ title, subtitle, icon = 'leaf-outline', actionLabel, onAction }: Props) {
+  const { colors, typography } = useTheme();
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        wrap: { padding: 28, alignItems: 'center' },
+        iconWrap: {
+          width: 56,
+          height: 56,
+          borderRadius: 18,
+          backgroundColor: colors.primarySoft,
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: 14,
+        },
+        title: { textAlign: 'center' },
+        subtitle: { marginTop: 8, textAlign: 'center', maxWidth: 280 },
+        action: { marginTop: 18, minWidth: 180 },
+      }),
+    [colors],
+  );
+
   return (
     <View style={styles.wrap} accessibilityRole="summary">
       <View style={styles.iconWrap}>
@@ -26,19 +49,3 @@ export function EmptyState({ title, subtitle, icon = 'leaf-outline', actionLabel
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  wrap: { padding: 28, alignItems: 'center' },
-  iconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 18,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
-  },
-  title: { textAlign: 'center' },
-  subtitle: { marginTop: 8, textAlign: 'center', maxWidth: 280 },
-  action: { marginTop: 18, minWidth: 180 },
-});

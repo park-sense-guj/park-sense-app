@@ -1,5 +1,5 @@
 import { get, ref } from 'firebase/database';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Alert, FlatList, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '../../components/Button';
@@ -9,15 +9,29 @@ import { Screen } from '../../components/Screen';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { StatusBadge } from '../../components/StatusBadge';
 import { getFirebaseDatabase } from '../../config/firebase';
-import { colors, typography } from '../../config/theme';
 import { useParkingSlots } from '../../hooks/useParkingSlots';
 import { notifyUsersSlotAvailable } from '../../services/notificationService';
 import { setSlotOccupancy } from '../../services/parkingService';
+import { useTheme } from '../../theme/ThemeProvider';
 import type { ParkingSlot, UserProfile } from '../../types';
 
 export function AdminSlotsScreen() {
+  const { colors, typography } = useTheme();
   const { slots, loading } = useParkingSlots();
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        list: { gap: 12, paddingBottom: 24 },
+        row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
+        copy: { flex: 1 },
+        meta: { color: colors.textMuted, marginTop: 4 },
+        action: { marginTop: 12 },
+        loading: { textAlign: 'center', color: colors.textMuted, paddingTop: 32, fontWeight: '600' },
+      }),
+    [colors],
+  );
 
   async function toggle(slot: ParkingSlot) {
     const next = slot.status === 'Available' ? 'Occupied' : 'Available';
@@ -109,12 +123,3 @@ async function notifyWatchers(slot: ParkingSlot) {
     locationName: slot.locationName,
   });
 }
-
-const styles = StyleSheet.create({
-  list: { gap: 12, paddingBottom: 24 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
-  copy: { flex: 1 },
-  meta: { color: colors.textMuted, marginTop: 4 },
-  action: { marginTop: 12 },
-  loading: { textAlign: 'center', color: colors.textMuted, paddingTop: 32, fontWeight: '600' },
-});

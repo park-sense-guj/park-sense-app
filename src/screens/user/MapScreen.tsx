@@ -10,16 +10,18 @@ import { BrandHeader } from '../../components/BrandHeader';
 import { Button } from '../../components/Button';
 import { Screen } from '../../components/Screen';
 import { StatusBadge } from '../../components/StatusBadge';
-import { colors, radius, shadow, typography } from '../../config/theme';
+import { radius } from '../../config/theme';
 import { DEMO_LOT } from '../../data/demoLot';
 import { useParkingSlots } from '../../hooks/useParkingSlots';
 import type { UserStackParamList } from '../../navigation/types';
 import { updatePreferredLocation } from '../../services/authService';
 import { createNotification } from '../../services/notificationService';
 import { useAuthStore } from '../../store/authStore';
+import { useTheme } from '../../theme/ThemeProvider';
 import type { ParkingSlot } from '../../types';
 
 export function MapScreen() {
+  const { colors, shadow, typography } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<UserStackParamList>>();
   const insets = useSafeAreaInsets();
   const profile = useAuthStore((state) => state.profile);
@@ -31,6 +33,87 @@ export function MapScreen() {
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
   const initials = initialsFromName(profile?.fullName);
   const lotName = slots[0]?.locationName ?? 'No lot yet';
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        top: { paddingHorizontal: 20, paddingBottom: 10 },
+        greeting: { fontSize: 15, color: colors.textMuted },
+        name: { fontSize: 26, fontWeight: '800', color: colors.text, letterSpacing: -0.6, marginTop: 2 },
+        mapShadow: {
+          flex: 1,
+          minHeight: 320,
+          marginHorizontal: 12,
+          marginBottom: 16,
+          borderRadius: radius.xl,
+        },
+        mapCard: {
+          flex: 1,
+          borderRadius: radius.xl,
+          overflow: 'hidden',
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.mapSurface,
+        },
+        mapPlaceholder: { flex: 1 },
+        chip: {
+          position: 'absolute',
+          top: 12,
+          left: 12,
+          right: 12,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 10,
+          backgroundColor: colors.chip,
+          borderRadius: radius.lg,
+          borderWidth: 1,
+          borderColor: colors.glassBorder,
+          paddingVertical: 10,
+          paddingHorizontal: 12,
+        },
+        lot: { flex: 1, fontSize: 14, fontWeight: '700', color: colors.text },
+        chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'flex-end' },
+        mapBanner: {
+          position: 'absolute',
+          left: 12,
+          right: 12,
+          bottom: 96,
+          backgroundColor: colors.chip,
+          borderRadius: 14,
+          padding: 12,
+        },
+        mapBannerTitle: { fontWeight: '700', color: colors.text, textAlign: 'center' },
+        mapBannerText: { marginTop: 4, textAlign: 'center', color: colors.textMuted },
+        sheet: {
+          position: 'absolute',
+          left: 12,
+          right: 12,
+          backgroundColor: colors.sheet,
+          borderRadius: 28,
+          padding: 18,
+          borderWidth: 1,
+          borderColor: colors.glassBorder,
+          ...shadow.clay,
+        },
+        handle: {
+          alignSelf: 'center',
+          width: 40,
+          height: 4,
+          borderRadius: 2,
+          backgroundColor: colors.borderStrong,
+          marginBottom: 12,
+        },
+        sheetRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
+        sheetCopy: { flex: 1 },
+        sheetHint: { marginTop: 10, color: colors.textMuted, lineHeight: 20 },
+        actions: { flexDirection: 'row', gap: 10, marginTop: 14 },
+        actionBtn: { flex: 1 },
+        dismissHit: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+        dismiss: { color: colors.textMuted, fontWeight: '600' },
+      }),
+    [colors, shadow],
+  );
 
   const region = useMemo(
     () => ({
@@ -61,7 +144,7 @@ export function MapScreen() {
         slotId: slot.slotId,
         message: `We will notify you when a slot opens at ${slot.locationName}. Watching ${slot.slotNumber}.`,
       });
-      Alert.alert('Watching this lot', `You’ll get an alert when a space opens at ${slot.locationName}.`);
+      Alert.alert('Watching this lot', `You'll get an alert when a space opens at ${slot.locationName}.`);
     } catch (error) {
       Alert.alert('Could not save alert', error instanceof Error ? error.message : 'Try again.');
     } finally {
@@ -167,80 +250,3 @@ export function MapScreen() {
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  top: { paddingHorizontal: 20, paddingBottom: 10 },
-  greeting: { fontSize: 15, color: colors.textMuted },
-  name: { fontSize: 26, fontWeight: '800', color: colors.text, letterSpacing: -0.6, marginTop: 2 },
-  mapShadow: {
-    flex: 1,
-    minHeight: 320,
-    marginHorizontal: 12,
-    marginBottom: 16,
-    borderRadius: radius.xl,
-  },
-  mapCard: {
-    flex: 1,
-    borderRadius: radius.xl,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: '#D7E3DF',
-  },
-  mapPlaceholder: { flex: 1 },
-  chip: {
-    position: 'absolute',
-    top: 12,
-    left: 12,
-    right: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-    backgroundColor: 'rgba(255,255,255,0.94)',
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-  },
-  lot: { flex: 1, fontSize: 14, fontWeight: '700', color: colors.text },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'flex-end' },
-  mapBanner: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
-    bottom: 96,
-    backgroundColor: 'rgba(255,255,255,0.94)',
-    borderRadius: 14,
-    padding: 12,
-  },
-  mapBannerTitle: { fontWeight: '700', color: colors.text, textAlign: 'center' },
-  mapBannerText: { marginTop: 4, textAlign: 'center', color: colors.textMuted },
-  sheet: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
-    backgroundColor: 'rgba(255,255,255,0.96)',
-    borderRadius: 28,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
-    ...shadow.clay,
-  },
-  handle: {
-    alignSelf: 'center',
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.borderStrong,
-    marginBottom: 12,
-  },
-  sheetRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
-  sheetCopy: { flex: 1 },
-  sheetHint: { marginTop: 10, color: colors.textMuted, lineHeight: 20 },
-  actions: { flexDirection: 'row', gap: 10, marginTop: 14 },
-  actionBtn: { flex: 1 },
-  dismissHit: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  dismiss: { color: colors.textMuted, fontWeight: '600' },
-});

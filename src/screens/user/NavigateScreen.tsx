@@ -1,12 +1,12 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useEffect, useState } from 'react';
-import { Alert, Platform, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button } from '../../components/Button';
 import { StatusBadge } from '../../components/StatusBadge';
-import { colors, radius, shadow, spacing, typography } from '../../config/theme';
+import { radius, spacing } from '../../config/theme';
 import { useUserLocation } from '../../hooks/useUserLocation';
 import type { UserStackParamList } from '../../navigation/types';
 import { endParkingSession, startParkingSession } from '../../services/historyService';
@@ -17,10 +17,12 @@ import {
   type RouteResult,
 } from '../../services/mapService';
 import { useAuthStore } from '../../store/authStore';
+import { useTheme } from '../../theme/ThemeProvider';
 
 type Props = NativeStackScreenProps<UserStackParamList, 'Navigate'>;
 
 export function NavigateScreen({ route }: Props) {
+  const { colors, shadow, typography } = useTheme();
   const { slot } = route.params;
   const insets = useSafeAreaInsets();
   const profile = useAuthStore((state) => state.profile);
@@ -28,6 +30,30 @@ export function NavigateScreen({ route }: Props) {
   const [routeResult, setRouteResult] = useState<RouteResult | null>(null);
   const [historyId, setHistoryId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        flex: { flex: 1, backgroundColor: colors.background },
+        map: { flex: 1 },
+        panel: {
+          backgroundColor: colors.sheet,
+          paddingHorizontal: spacing.lg,
+          paddingTop: 18,
+          borderTopLeftRadius: radius.xl,
+          borderTopRightRadius: radius.xl,
+          borderTopWidth: 1,
+          borderColor: colors.glassBorder,
+          ...shadow.clay,
+        },
+        row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
+        copy: { flex: 1 },
+        eta: { color: colors.primaryDark, marginVertical: 12, fontWeight: '600', lineHeight: 20 },
+        actions: { flexDirection: 'row', gap: 10, marginTop: 10 },
+        half: { flex: 1 },
+      }),
+    [colors, shadow],
+  );
 
   const destination: LatLng = { latitude: slot.latitude, longitude: slot.longitude };
 
@@ -151,23 +177,3 @@ export function NavigateScreen({ route }: Props) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: colors.background },
-  map: { flex: 1 },
-  panel: {
-    backgroundColor: Platform.OS === 'ios' ? 'rgba(255,255,255,0.96)' : colors.cardSolid,
-    paddingHorizontal: spacing.lg,
-    paddingTop: 18,
-    borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl,
-    borderTopWidth: 1,
-    borderColor: colors.glassBorder,
-    ...shadow.clay,
-  },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
-  copy: { flex: 1 },
-  eta: { color: colors.primaryDark, marginVertical: 12, fontWeight: '600', lineHeight: 20 },
-  actions: { flexDirection: 'row', gap: 10, marginTop: 10 },
-  half: { flex: 1 },
-});

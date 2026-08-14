@@ -1,4 +1,5 @@
 import * as Haptics from 'expo-haptics';
+import { useMemo } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -9,7 +10,8 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import { colors, radius, shadow } from '../config/theme';
+import { radius } from '../config/theme';
+import { useTheme } from '../theme/ThemeProvider';
 
 type Variant = 'primary' | 'secondary' | 'danger' | 'ghost';
 
@@ -29,7 +31,39 @@ export function Button({
   onPress,
   ...rest
 }: Props) {
+  const { colors, shadow } = useTheme();
   const inverted = variant === 'primary' || variant === 'danger';
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        base: {
+          minHeight: 52,
+          borderRadius: radius.md,
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingHorizontal: 18,
+        },
+        primary: { backgroundColor: colors.primary },
+        secondary: {
+          backgroundColor: colors.primarySoft,
+          borderWidth: 1,
+          borderColor: colors.border,
+        },
+        danger: { backgroundColor: colors.occupied },
+        ghost: {
+          backgroundColor: 'transparent',
+          borderWidth: 1,
+          borderColor: colors.borderStrong,
+        },
+        disabled: { opacity: 0.5 },
+        pressed: { transform: [{ scale: 0.985 }], opacity: 0.92 },
+        label: { color: colors.white, fontSize: 16, fontWeight: '700' },
+        labelDark: { color: colors.primaryDark },
+        labelGhost: { color: colors.text },
+      }),
+    [colors],
+  );
 
   return (
     <Pressable
@@ -63,30 +97,3 @@ export function Button({
     </Pressable>
   );
 }
-
-const styles = StyleSheet.create({
-  base: {
-    minHeight: 52,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 18,
-  },
-  primary: { backgroundColor: colors.primary },
-  secondary: {
-    backgroundColor: colors.primarySoft,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  danger: { backgroundColor: colors.occupied },
-  ghost: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-  },
-  disabled: { opacity: 0.5 },
-  pressed: { transform: [{ scale: 0.985 }], opacity: 0.92 },
-  label: { color: colors.white, fontSize: 16, fontWeight: '700' },
-  labelDark: { color: colors.primaryDark },
-  labelGhost: { color: colors.text },
-});

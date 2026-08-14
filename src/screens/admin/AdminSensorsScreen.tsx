@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Alert, FlatList, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '../../components/Button';
@@ -7,14 +7,27 @@ import { GlassCard } from '../../components/GlassCard';
 import { Screen } from '../../components/Screen';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { StatusBadge } from '../../components/StatusBadge';
-import { colors, typography } from '../../config/theme';
 import { useParkingSlots } from '../../hooks/useParkingSlots';
 import { setSensorStatus } from '../../services/parkingService';
+import { useTheme } from '../../theme/ThemeProvider';
 
 export function AdminSensorsScreen() {
+  const { colors, typography } = useTheme();
   const { sensors, slots, loading } = useParkingSlots();
   const [busyId, setBusyId] = useState<string | null>(null);
   const slotLabel = Object.fromEntries(slots.map((slot) => [slot.slotId, slot.slotNumber]));
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        list: { gap: 12, paddingBottom: 24 },
+        row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
+        meta: { color: colors.textMuted, marginTop: 8, lineHeight: 20 },
+        action: { marginTop: 12 },
+        loading: { textAlign: 'center', color: colors.textMuted, paddingTop: 32, fontWeight: '600' },
+      }),
+    [colors],
+  );
 
   async function toggleFault(sensorId: string, current: string) {
     setBusyId(sensorId);
@@ -66,11 +79,3 @@ export function AdminSensorsScreen() {
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  list: { gap: 12, paddingBottom: 24 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
-  meta: { color: colors.textMuted, marginTop: 8, lineHeight: 20 },
-  action: { marginTop: 12 },
-  loading: { textAlign: 'center', color: colors.textMuted, paddingTop: 32, fontWeight: '600' },
-});

@@ -1,6 +1,7 @@
+import { useMemo } from 'react';
 import { Image, StyleSheet, Text, View, type StyleProp, type ImageStyle, type ViewStyle } from 'react-native';
 
-import { colors } from '../config/theme';
+import { useTheme } from '../theme/ThemeProvider';
 
 type Props = {
   initials?: string;
@@ -18,8 +19,29 @@ export function initialsFromName(fullName?: string | null) {
 }
 
 export function Avatar({ initials = 'P', photoUrl, size = 40, style }: Props) {
-  const radius = size / 2;
-  const shape = { width: size, height: size, borderRadius: radius };
+  const { colors } = useTheme();
+  const avatarRadius = size / 2;
+  const shape = { width: size, height: size, borderRadius: avatarRadius };
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        image: {
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.primarySoft,
+        },
+        fallback: {
+          backgroundColor: colors.primarySoft,
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderWidth: 1,
+          borderColor: colors.border,
+        },
+        initial: { color: colors.primaryDark, fontWeight: '800' },
+      }),
+    [colors],
+  );
 
   if (photoUrl) {
     return (
@@ -39,19 +61,3 @@ export function Avatar({ initials = 'P', photoUrl, size = 40, style }: Props) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  image: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.primarySoft,
-  },
-  fallback: {
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  initial: { color: colors.primaryDark, fontWeight: '800' },
-});

@@ -5,9 +5,9 @@ import {
 } from '@react-navigation/bottom-tabs';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { useMemo } from 'react';
 
 import { FloatingTabBar } from '../components/FloatingTabBar';
-import { colors } from '../config/theme';
 import { useNotifications } from '../hooks/useNotifications';
 import { AdminDashboardScreen } from '../screens/admin/AdminDashboardScreen';
 import { AdminSensorsScreen } from '../screens/admin/AdminSensorsScreen';
@@ -20,6 +20,7 @@ import { NavigateScreen } from '../screens/user/NavigateScreen';
 import { NotificationsScreen } from '../screens/user/NotificationsScreen';
 import { ProfileScreen } from '../screens/user/ProfileScreen';
 import { useAuthStore } from '../store/authStore';
+import { useTheme } from '../theme/ThemeProvider';
 import type {
   AdminTabParamList,
   AuthStackParamList,
@@ -32,32 +33,6 @@ const UserStack = createNativeStackNavigator<UserStackParamList>();
 const UserTabs = createBottomTabNavigator<UserTabParamList>();
 const AdminTabs = createBottomTabNavigator<AdminTabParamList>();
 
-const navTheme = {
-  ...DefaultTheme,
-  colors: {
-    ...DefaultTheme.colors,
-    background: colors.background,
-    primary: colors.primary,
-    card: colors.white,
-    text: colors.text,
-    border: colors.border,
-  },
-};
-
-const tabOptions = {
-  headerShown: false,
-  tabBarActiveTintColor: colors.primary,
-  tabBarInactiveTintColor: colors.textMuted,
-  tabBarHideOnKeyboard: true,
-  tabBarStyle: {
-    backgroundColor: 'transparent',
-    borderTopWidth: 0,
-    elevation: 0,
-    shadowOpacity: 0,
-  },
-  tabBar: (props: BottomTabBarProps) => <FloatingTabBar {...props} />,
-};
-
 function AuthNavigator() {
   return (
     <AuthStack.Navigator screenOptions={{ headerShown: false, animation: 'fade' }}>
@@ -68,8 +43,26 @@ function AuthNavigator() {
 }
 
 function UserTabNavigator() {
+  const { colors } = useTheme();
   const profile = useAuthStore((state) => state.profile);
   const { unreadCount } = useNotifications(profile?.userId);
+
+  const tabOptions = useMemo(
+    () => ({
+      headerShown: false,
+      tabBarActiveTintColor: colors.primary,
+      tabBarInactiveTintColor: colors.textMuted,
+      tabBarHideOnKeyboard: true,
+      tabBarStyle: {
+        backgroundColor: 'transparent',
+        borderTopWidth: 0,
+        elevation: 0,
+        shadowOpacity: 0,
+      },
+      tabBar: (props: BottomTabBarProps) => <FloatingTabBar {...props} />,
+    }),
+    [colors],
+  );
 
   return (
     <UserTabs.Navigator screenOptions={tabOptions}>
@@ -119,6 +112,8 @@ function UserTabNavigator() {
 }
 
 function UserNavigator() {
+  const { colors } = useTheme();
+
   return (
     <UserStack.Navigator
       screenOptions={{
@@ -140,6 +135,25 @@ function UserNavigator() {
 }
 
 function AdminNavigator() {
+  const { colors } = useTheme();
+
+  const tabOptions = useMemo(
+    () => ({
+      headerShown: false,
+      tabBarActiveTintColor: colors.primary,
+      tabBarInactiveTintColor: colors.textMuted,
+      tabBarHideOnKeyboard: true,
+      tabBarStyle: {
+        backgroundColor: 'transparent',
+        borderTopWidth: 0,
+        elevation: 0,
+        shadowOpacity: 0,
+      },
+      tabBar: (props: BottomTabBarProps) => <FloatingTabBar {...props} />,
+    }),
+    [colors],
+  );
+
   return (
     <AdminTabs.Navigator screenOptions={tabOptions}>
       <AdminTabs.Screen
@@ -187,8 +201,24 @@ function AdminNavigator() {
 }
 
 export function RootNavigator() {
+  const { colors } = useTheme();
   const profile = useAuthStore((state) => state.profile);
   const firebaseUser = useAuthStore((state) => state.firebaseUser);
+
+  const navTheme = useMemo(
+    () => ({
+      ...DefaultTheme,
+      colors: {
+        ...DefaultTheme.colors,
+        background: colors.background,
+        primary: colors.primary,
+        card: colors.cardSolid,
+        text: colors.text,
+        border: colors.border,
+      },
+    }),
+    [colors],
+  );
 
   return (
     <NavigationContainer theme={navTheme}>
