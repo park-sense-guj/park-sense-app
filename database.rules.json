@@ -1,0 +1,26 @@
+{
+  "rules": {
+    "users": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')"
+      }
+    },
+    "parkingSlots": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "sensors": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "parkingHistory": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "notifications": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    }
+  }
+}

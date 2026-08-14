@@ -13,7 +13,6 @@ expo-env.d.ts
 .kotlin/
 *.orig.*
 *.jks
-*.p8
 *.p12
 *.key
 *.mobileprovision
@@ -30,8 +29,13 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
+# local env files and secrets
+.env
 .env*.local
+*.p8
+serviceAccount*.json
+google-services.json
+GoogleService-Info.plist
 
 # typescript
 *.tsbuildinfo
