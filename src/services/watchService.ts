@@ -1,6 +1,7 @@
 import { get, ref, remove, update } from 'firebase/database';
 
 import { getFirebaseDatabase } from '../config/firebase';
+import { assertOnline, readableNetworkError, withNetworkTimeout } from './networkService';
 import { createNotification } from './notificationService';
 
 export function lotWatcherKey(locationName: string): string {
@@ -13,20 +14,27 @@ export async function watchLot(
   locationName: string,
   slotId?: string,
 ): Promise<void> {
-  const db = getFirebaseDatabase();
-  const key = lotWatcherKey(locationName);
+  assertOnline('watch this lot');
+  await withNetworkTimeout(
+    (async () => {
+      const db = getFirebaseDatabase();
+      const key = lotWatcherKey(locationName);
 
-  // Single multi-path update so profile + watcher list stay in sync.
-  await update(ref(db), {
-    [`users/${userId}/preferredLocation`]: locationName,
-    [`lotWatchers/${key}/${userId}`]: true,
-  });
+      // Single multi-path update so profile + watcher list stay in sync.
+      await update(ref(db), {
+        [`users/${userId}/preferredLocation`]: locationName,
+        [`lotWatchers/${key}/${userId}`]: true,
+      });
 
-  await createNotification({
-    userId,
-    slotId,
-    message: `Watching ${locationName}. We’ll alert you when a space opens.`,
-  });
+      await createNotification({
+        userId,
+        slotId,
+        message: `Watching ${locationName}. We’ll alert you when a space opens.`,
+      });
+    })(),
+    15_000,
+    'Saving the watch is taking too long. Check your connection and try again.',
+  );
 }
 
 export async function listLotWatcherIds(locationName: string): Promise<string[]> {
@@ -38,12 +46,19 @@ export async function listLotWatcherIds(locationName: string): Promise<string[]>
 }
 
 export async function stopWatchingLot(userId: string, locationName: string): Promise<void> {
-  const db = getFirebaseDatabase();
-  const key = lotWatcherKey(locationName);
-  await update(ref(db), {
-    [`users/${userId}/preferredLocation`]: null,
-    [`lotWatchers/${key}/${userId}`]: null,
-  });
+  assertOnline('stop watching');
+  await withNetworkTimeout(
+    (async () => {
+      const db = getFirebaseDatabase();
+      const key = lotWatcherKey(locationName);
+      await update(ref(db), {
+        [`users/${userId}/preferredLocation`]: null,
+        [`lotWatchers/${key}/${userId}`]: null,
+      });
+    })(),
+    15_000,
+    'Updating the watch is taking too long. Check your connection and try again.',
+  );
 }
 
 export async function clearLotWatch(userId: string, locationName: string): Promise<void> {
@@ -57,5 +72,5 @@ export function readableWatchError(error: unknown): string {
   if (message.includes('PERMISSION_DENIED')) {
     return 'Could not save the watch. Publish the latest database.rules.json in Firebase Console, then try again.';
   }
-  return message || 'Could not save alert. Try again.';
+  return readableNetworkError(error, 'Could not save alert. Try again.');
 }

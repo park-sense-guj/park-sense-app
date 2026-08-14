@@ -1,4 +1,3 @@
-import * as Haptics from 'expo-haptics';
 import { memo, useMemo } from 'react';
 import {
   ActivityIndicator,
@@ -11,6 +10,7 @@ import {
 } from 'react-native';
 
 import { radius } from '../config/theme';
+import { playSelectionFeedback } from '../services/feedbackService';
 import { useTheme } from '../theme/ThemeProvider';
 
 type Variant = 'primary' | 'secondary' | 'danger' | 'ghost';
@@ -72,7 +72,7 @@ function ButtonComponent({
       disabled={disabled || loading}
       onPress={(event) => {
         if (variant === 'primary' || variant === 'danger') {
-          void Haptics.selectionAsync().catch(() => undefined);
+          playSelectionFeedback();
         }
         onPress?.(event);
       }}

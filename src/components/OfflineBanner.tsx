@@ -1,10 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import { onValue, ref } from 'firebase/database';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { getFirebaseDatabase } from '../config/firebase';
+import { useConnectivityStore } from '../store/connectivityStore';
 import { useTheme } from '../theme/ThemeProvider';
 
 /**
@@ -14,14 +13,7 @@ import { useTheme } from '../theme/ThemeProvider';
 export function OfflineBanner() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const [connected, setConnected] = useState(true);
-
-  useEffect(() => {
-    const connectedRef = ref(getFirebaseDatabase(), '.info/connected');
-    return onValue(connectedRef, (snapshot) => {
-      setConnected(snapshot.val() === true);
-    });
-  }, []);
+  const isOnline = useConnectivityStore((state) => state.isOnline);
 
   const styles = useMemo(
     () =>
@@ -47,7 +39,7 @@ export function OfflineBanner() {
     [colors, insets.top],
   );
 
-  if (connected) {
+  if (isOnline) {
     return null;
   }
 

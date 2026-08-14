@@ -17,23 +17,32 @@ import { useNotifications } from '../../hooks/useNotifications';
 import { useParkingHistory } from '../../hooks/useParkingHistory';
 import { useParkingSlots } from '../../hooks/useParkingSlots';
 import { useUserLocation } from '../../hooks/useUserLocation';
-import type { UserStackParamList } from '../../navigation/types';
+import type { UserStackParamList, UserTabParamList } from '../../navigation/types';
 import { endParkingSession, findActiveSession } from '../../services/historyService';
+import { playErrorFeedback, playSuccessFeedback } from '../../services/feedbackService';
+import { readableNetworkError } from '../../services/networkService';
 import { readableWatchError, stopWatchingLot, watchLot } from '../../services/watchService';
 import { useAuthStore } from '../../store/authStore';
+import { useConnectivityStore } from '../../store/connectivityStore';
 import { useTheme } from '../../theme/ThemeProvider';
 import type { ParkingSlot } from '../../types';
+
+type TabNav = {
+  navigate: (screen: keyof UserTabParamList) => void;
+};
 
 export function MapScreen() {
   const { colors, typography, isDark } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<UserStackParamList>>();
+  const tabNavigation = useNavigation() as unknown as TabNav;
   const insets = useSafeAreaInsets();
+  const isOnline = useConnectivityStore((state) => state.isOnline);
   const fullName = useAuthStore((state) => state.profile?.fullName);
   const photoUrl = useAuthStore((state) => state.profile?.photoUrl);
   const userId = useAuthStore((state) => state.profile?.userId);
   const preferredLocation = useAuthStore((state) => state.profile?.preferredLocation);
   const { unreadCount } = useNotifications(userId);
-  const { slots, stats, loading, error } = useParkingSlots();
+  const { slots, onlineSlots, stats, loading, error } = useParkingSlots();
   const { activeSession, items: historyItems } = useParkingHistory(userId);
   const { denied: locationDenied } = useUserLocation();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -43,11 +52,11 @@ export function MapScreen() {
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
   const initials = initialsFromName(fullName);
   const lotName = slots[0]?.locationName ?? 'No lot yet';
-  const firstLat = slots[0]?.latitude;
-  const firstLng = slots[0]?.longitude;
+  const firstLat = onlineSlots[0]?.latitude ?? slots[0]?.latitude;
+  const firstLng = onlineSlots[0]?.longitude ?? slots[0]?.longitude;
   const selected = useMemo(
-    () => slots.find((slot) => slot.slotId === selectedId) ?? null,
-    [slots, selectedId],
+    () => onlineSlots.find((slot) => slot.slotId === selectedId) ?? null,
+    [onlineSlots, selectedId],
   );
   const mySessionOnSelected = selected
     ? findActiveSession(historyItems, selected.slotId)
@@ -55,7 +64,8 @@ export function MapScreen() {
   const watchingThisLot = Boolean(
     selected && preferredLocation && preferredLocation === selected.locationName,
   );
-  const openCount = stats.available;
+  const openCount = stats.onlineAvailable;
+  const offlineCount = stats.offlineSensors;
 
   const styles = useMemo(
     () =>
@@ -79,6 +89,16 @@ export function MapScreen() {
           borderColor: colors.glassBorder,
         },
         tipText: { color: colors.primaryDark, fontSize: 13, fontWeight: '600', lineHeight: 18 },
+        tipWarn: {
+          marginTop: 10,
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+          borderRadius: 14,
+          backgroundColor: colors.warningSoft,
+          borderWidth: 1,
+          borderColor: colors.warning,
+        },
+        tipWarnText: { color: colors.warning, fontSize: 13, fontWeight: '700', lineHeight: 18 },
         mapWrap: {
           flex: 1,
           minHeight: 320,
@@ -186,6 +206,11 @@ export function MapScreen() {
     if (!userId) {
       return;
     }
+    if (!isOnline) {
+      playErrorFeedback();
+      Alert.alert('You’re offline', 'Reconnect to watch this lot for free-space alerts.');
+      return;
+    }
     if (preferredLocation === slot.locationName) {
       Alert.alert(
         'Already watching',
@@ -196,6 +221,7 @@ export function MapScreen() {
     setWatching(true);
     try {
       await watchLot(userId, slot.locationName, slot.slotId);
+      playSuccessFeedback();
       Alert.alert(
         'Watching this lot',
         `You’ll get an alert when a space opens at ${slot.locationName}. This applies to every pin in that lot.`,
@@ -205,6 +231,7 @@ export function MapScreen() {
         ],
       );
     } catch (error) {
+      playErrorFeedback();
       Alert.alert('Could not save alert', readableWatchError(error));
     } finally {
       setWatching(false);
@@ -215,11 +242,18 @@ export function MapScreen() {
     if (!userId) {
       return;
     }
+    if (!isOnline) {
+      playErrorFeedback();
+      Alert.alert('You’re offline', 'Reconnect to stop watching this lot.');
+      return;
+    }
     setWatching(true);
     try {
       await stopWatchingLot(userId, slot.locationName);
+      playSuccessFeedback();
       Alert.alert('Stopped watching', `You won’t get alerts for ${slot.locationName} anymore.`);
     } catch (error) {
+      playErrorFeedback();
       Alert.alert('Could not stop watching', readableWatchError(error));
     } finally {
       setWatching(false);
@@ -228,6 +262,11 @@ export function MapScreen() {
 
   function onLeaveSelected() {
     if (!userId || !mySessionOnSelected) {
+      return;
+    }
+    if (!isOnline) {
+      playErrorFeedback();
+      Alert.alert('You’re offline', 'Reconnect to free this space on the live map.');
       return;
     }
     Alert.alert('Leave this slot?', 'This frees the pin and ends your session in Activity.', [
@@ -241,11 +280,13 @@ export function MapScreen() {
             try {
               await endParkingSession(userId, mySessionOnSelected.historyId);
               setSelectedId(null);
+              playSuccessFeedback();
               Alert.alert('You’re free to go', 'The space is open again on the map.');
             } catch (error) {
+              playErrorFeedback();
               Alert.alert(
                 'Could not leave',
-                error instanceof Error ? error.message : 'Try again.',
+                readableNetworkError(error, 'Try again when your connection is stable.'),
               );
             } finally {
               setLeaving(false);
@@ -257,6 +298,9 @@ export function MapScreen() {
   }
 
   const tipText = (() => {
+    if (!isOnline) {
+      return 'You’re offline. Live pins pause until you’re back — you can still open a pin and use Maps.';
+    }
     if (activeSession) {
       return `You’re parked at ${activeSession.slotNumber}. Tap that pin to leave when you’re done.`;
     }
@@ -276,10 +320,13 @@ export function MapScreen() {
     ? (() => {
         if (mySessionOnSelected) {
           return {
-            hint: 'This is your active parking session. Leave when you go so the pin turns green again.',
+            hint: isOnline
+              ? 'This is your active parking session. Leave when you go so the pin turns green again.'
+              : 'You’re offline. Reconnect to leave this slot on the live map.',
             primaryTitle: 'Leave slot',
             primaryVariant: 'danger' as const,
             primaryLoading: leaving,
+            primaryDisabled: !isOnline,
             onPrimary: onLeaveSelected,
             secondaryTitle: 'Open session',
             onSecondary: () => navigation.navigate('Navigate', { slot: selected }),
@@ -291,18 +338,22 @@ export function MapScreen() {
             primaryTitle: 'Go there',
             primaryVariant: 'primary' as const,
             primaryLoading: false,
+            primaryDisabled: false,
             onPrimary: () => navigation.navigate('Navigate', { slot: selected }),
             secondaryTitle: 'Close',
             onSecondary: () => setSelectedId(null),
           };
         }
         return {
-          hint: watchingThisLot
-            ? `You’re watching ${selected.locationName}. Alerts cover every pin in this lot, not just ${selected.slotNumber}.`
-            : 'This space is taken. Watch the whole lot to get an alert when any space opens.',
+          hint: !isOnline
+            ? 'You’re offline. Reconnect to watch this lot for free-space alerts.'
+            : watchingThisLot
+              ? `You’re watching ${selected.locationName}. Alerts cover every pin in this lot, not just ${selected.slotNumber}.`
+              : 'This space is taken. Watch the whole lot to get an alert when any space opens.',
           primaryTitle: watchingThisLot ? 'Stop watching' : 'Watch lot',
           primaryVariant: watchingThisLot ? ('danger' as const) : ('primary' as const),
           primaryLoading: watching,
+          primaryDisabled: !isOnline,
           onPrimary: () =>
             void (watchingThisLot ? onStopWatching(selected) : onWatchLot(selected)),
           secondaryTitle: 'Close',
@@ -312,7 +363,7 @@ export function MapScreen() {
     : null;
 
   return (
-    <Screen padded={false} overlayTabBar blobs={false}>
+    <Screen padded={false} overlayTabBar>
       <View style={styles.top}>
         <BrandHeader
           initials={initials}
@@ -320,9 +371,19 @@ export function MapScreen() {
           photoUrl={photoUrl}
           alertsBadge={unreadCount}
           onAlertsPress={() => navigation.navigate('Alerts')}
+          onProfilePress={() => tabNavigation.navigate('ProfileTab')}
         />
         <Text style={styles.greeting}>{greeting}</Text>
         <Text style={styles.name}>{fullName ?? 'Driver'}</Text>
+        {!selected && offlineCount > 0 ? (
+          <View style={styles.tipWarn}>
+            <Text style={styles.tipWarnText}>
+              {offlineCount === 1
+                ? '1 space hidden — sensor offline'
+                : `${offlineCount} spaces hidden — sensors offline`}
+            </Text>
+          </View>
+        ) : null}
         {!selected ? (
           <View style={styles.tip}>
             <Text style={styles.tipText}>{tipText}</Text>
@@ -345,7 +406,7 @@ export function MapScreen() {
             rotateEnabled={false}
             pitchEnabled={false}
           >
-            {slots.map((slot) => (
+            {onlineSlots.map((slot) => (
               <Marker
                 key={`${slot.slotId}-${slot.status}`}
                 coordinate={{ latitude: slot.latitude, longitude: slot.longitude }}
@@ -365,10 +426,13 @@ export function MapScreen() {
             </Text>
             <View style={styles.chipRow}>
               <StatusBadge
-                label={loading ? 'Updating…' : `${stats.available} open`}
+                label={loading ? 'Updating…' : `${stats.onlineAvailable} open`}
                 tone="available"
               />
-              <StatusBadge label={`${stats.occupied} taken`} tone="occupied" />
+              <StatusBadge label={`${stats.onlineOccupied} taken`} tone="occupied" />
+              {offlineCount > 0 ? (
+                <StatusBadge label={`${offlineCount} offline`} tone="warning" />
+              ) : null}
             </View>
           </View>
 
@@ -378,6 +442,15 @@ export function MapScreen() {
               <Text style={styles.mapBannerText}>
                 Check your connection, then reopen Home. If this continues, publish the latest
                 Firebase database rules.
+              </Text>
+            </View>
+          ) : null}
+
+          {!loading && !error && onlineSlots.length === 0 && slots.length > 0 ? (
+            <View style={styles.mapBanner}>
+              <Text style={styles.mapBannerTitle}>All sensors offline</Text>
+              <Text style={styles.mapBannerText}>
+                Parking pins are hidden until an admin marks sensors healthy again.
               </Text>
             </View>
           ) : null}
@@ -412,6 +485,7 @@ export function MapScreen() {
               title={sheet.primaryTitle}
               variant={sheet.primaryVariant}
               loading={sheet.primaryLoading}
+              disabled={sheet.primaryDisabled}
               onPress={sheet.onPrimary}
               style={styles.actionBtn}
             />

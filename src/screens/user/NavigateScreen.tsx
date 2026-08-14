@@ -1,4 +1,5 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { CommonActions } from '@react-navigation/native';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from 'react-native-maps';
@@ -12,6 +13,7 @@ import { useParkingHistory } from '../../hooks/useParkingHistory';
 import { useParkingSlots } from '../../hooks/useParkingSlots';
 import { useUserLocation } from '../../hooks/useUserLocation';
 import type { UserStackParamList } from '../../navigation/types';
+import { playErrorFeedback, playSuccessFeedback } from '../../services/feedbackService';
 import {
   endParkingSession,
   findActiveSession,
@@ -23,26 +25,32 @@ import {
   type LatLng,
   type RouteResult,
 } from '../../services/mapService';
+import { readableNetworkError } from '../../services/networkService';
 import { useAuthStore } from '../../store/authStore';
+import { useConnectivityStore } from '../../store/connectivityStore';
 import { useTheme } from '../../theme/ThemeProvider';
 
 type Props = NativeStackScreenProps<UserStackParamList, 'Navigate'>;
 
 type Step = 'drive' | 'parked' | 'done';
 
+const SLOW_ROUTE_MS = 4_000;
+
 export function NavigateScreen({ navigation, route }: Props) {
   const { colors, typography, isDark } = useTheme();
   const { slot: routeSlot } = route.params;
   const insets = useSafeAreaInsets();
+  const isOnline = useConnectivityStore((state) => state.isOnline);
   const profile = useAuthStore((state) => state.profile);
   const { location, denied, loading: locationLoading } = useUserLocation();
-  const { slots } = useParkingSlots();
+  const { slots, isSensorFaulty } = useParkingSlots();
   const { items: historyItems } = useParkingHistory(profile?.userId);
   const mapRef = useRef<MapView | null>(null);
   const [routeBundle, setRouteBundle] = useState<{
     key: string;
     result: RouteResult | null;
   }>({ key: '', result: null });
+  const [routeSlow, setRouteSlow] = useState(false);
   const [localHistoryId, setLocalHistoryId] = useState<string | null>(null);
   const [leftSession, setLeftSession] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -51,6 +59,7 @@ export function NavigateScreen({ navigation, route }: Props) {
     () => slots.find((item) => item.slotId === routeSlot.slotId) ?? routeSlot,
     [slots, routeSlot],
   );
+  const sensorOffline = isSensorFaulty(slot.slotId);
 
   const activeOnThisSlot = useMemo(
     () => findActiveSession(historyItems, slot.slotId),
@@ -66,7 +75,7 @@ export function NavigateScreen({ navigation, route }: Props) {
   const sessionId = activeOnThisSlot?.historyId ?? localHistoryId;
   const isParked = Boolean(sessionId) && !leftSession;
   const step: Step = leftSession ? 'done' : isParked ? 'parked' : 'drive';
-  const canPark = !isParked && !leftSession && slot.status === 'Available';
+  const canPark = !isParked && !leftSession && slot.status === 'Available' && !sensorOffline;
 
   const displayRoute = useMemo((): RouteResult | null => {
     if (!location) {
@@ -133,16 +142,41 @@ export function NavigateScreen({ navigation, route }: Props) {
     }
     let cancelled = false;
     const key = routeKey;
+    setRouteSlow(false);
+    const slowTimer = setTimeout(() => {
+      if (!cancelled) {
+        setRouteSlow(true);
+      }
+    }, SLOW_ROUTE_MS);
+
     void fetchDrivingRoute(location, {
       latitude: slot.latitude,
       longitude: slot.longitude,
-    }).then((result) => {
-      if (!cancelled) {
-        setRouteBundle({ key, result });
-      }
-    });
+    })
+      .then((result) => {
+        if (!cancelled) {
+          setRouteBundle({ key, result });
+          setRouteSlow(false);
+        }
+      })
+      .catch(() => {
+        // fetchDrivingRoute is designed not to throw; keep a hard fallback anyway.
+        if (!cancelled) {
+          setRouteBundle({
+            key,
+            result: {
+              coordinates: [location, { latitude: slot.latitude, longitude: slot.longitude }],
+              isFallback: true,
+              warning: 'Couldn’t load turn-by-turn preview. Open Maps for directions.',
+            },
+          });
+          setRouteSlow(false);
+        }
+      });
+
     return () => {
       cancelled = true;
+      clearTimeout(slowTimer);
     };
   }, [location, routeKey, slot.latitude, slot.longitude]);
 
@@ -160,19 +194,29 @@ export function NavigateScreen({ navigation, route }: Props) {
     if (!profile || isParked) {
       return;
     }
+    if (!isOnline) {
+      playErrorFeedback();
+      Alert.alert('You’re offline', 'Reconnect to mark this space as taken on the live map.');
+      return;
+    }
     setBusy(true);
     try {
       const liveSlot = slots.find((item) => item.slotId === slot.slotId) ?? slot;
       const id = await startParkingSession(profile.userId, liveSlot);
       setLocalHistoryId(id);
       setLeftSession(false);
+      playSuccessFeedback();
       Alert.alert(
         'You’re parked',
         `${slot.slotNumber} is now taken on the map. Open/taken counts update live. Tap Leave slot when you go.`,
         [{ text: 'OK' }],
       );
     } catch (error) {
-      Alert.alert('Could not start session', error instanceof Error ? error.message : 'Try again.');
+      playErrorFeedback();
+      Alert.alert(
+        'Could not start session',
+        readableNetworkError(error, 'Try again when your connection is stable.'),
+      );
     } finally {
       setBusy(false);
     }
@@ -180,6 +224,11 @@ export function NavigateScreen({ navigation, route }: Props) {
 
   function onLeave() {
     if (!sessionId || !profile) {
+      return;
+    }
+    if (!isOnline) {
+      playErrorFeedback();
+      Alert.alert('You’re offline', 'Reconnect to free this space on the live map.');
       return;
     }
     Alert.alert('Leave this slot?', 'This frees the pin and marks your session finished in Activity.', [
@@ -194,20 +243,25 @@ export function NavigateScreen({ navigation, route }: Props) {
               await endParkingSession(profile.userId, sessionId);
               setLocalHistoryId(null);
               setLeftSession(true);
+              playSuccessFeedback();
               Alert.alert('Session ended', 'The space is open again. Open/taken counts updated.', [
                 {
                   text: 'View Activity',
                   onPress: () =>
-                    navigation.navigate('UserTabs', {
-                      screen: 'HistoryTab',
-                    }),
+                    navigation.dispatch(
+                      CommonActions.reset({
+                        index: 0,
+                        routes: [{ name: 'UserTabs', params: { screen: 'HistoryTab' } }],
+                      }),
+                    ),
                 },
                 { text: 'Back to map', onPress: () => navigation.goBack() },
               ]);
             } catch (error) {
+              playErrorFeedback();
               Alert.alert(
                 'Could not end session',
-                error instanceof Error ? error.message : 'Try again.',
+                readableNetworkError(error, 'Try again when your connection is stable.'),
               );
             } finally {
               setBusy(false);
@@ -218,9 +272,37 @@ export function NavigateScreen({ navigation, route }: Props) {
     ]);
   }
 
+  async function onOpenMaps() {
+    try {
+      await openExternalNavigation(destination, `Parking ${slot.slotNumber}`);
+    } catch (error) {
+      playErrorFeedback();
+      Alert.alert(
+        'Could not open Maps',
+        readableNetworkError(error, 'Try again in a moment.'),
+      );
+    }
+  }
+
   const etaText = (() => {
+    if (isParked || step === 'done') {
+      if (displayRoute?.durationText && !displayRoute.isFallback) {
+        return `Drive was about ${displayRoute.durationText} · ${displayRoute.distanceText}`;
+      }
+      return isParked
+        ? 'You’re at this space. Leave when you go so others see it as open.'
+        : 'Session finished — this space is free on the map again.';
+    }
+    if (!isOnline) {
+      return 'You’re offline. Open Maps for directions; park/leave when you’re back online.';
+    }
     if (routeLoading || locationLoading) {
-      return 'Getting your route…';
+      return routeSlow
+        ? 'Connection is slow — still loading your route…'
+        : 'Getting your route…';
+    }
+    if (displayRoute?.warning) {
+      return displayRoute.warning;
     }
     if (displayRoute?.durationText) {
       return `About ${displayRoute.durationText} · ${displayRoute.distanceText}`;
@@ -235,11 +317,17 @@ export function NavigateScreen({ navigation, route }: Props) {
   })();
 
   const nextHint = (() => {
+    if (sensorOffline) {
+      return 'Sensor offline for this space. Go back and pick another pin.';
+    }
     if (step === 'done') {
       return 'All done — this space is free on the map again.';
     }
     if (isParked) {
-      return 'You’re parked here. Leave when you go so others see it as open.';
+      return 'Leave when you go so the pin turns green and lot watchers can be notified.';
+    }
+    if (!isOnline) {
+      return 'Live map updates need a connection. You can still open Maps to drive there.';
     }
     if (slot.status === 'Occupied') {
       return 'This space was just taken. Go back and pick a green pin.';
@@ -300,23 +388,25 @@ export function NavigateScreen({ navigation, route }: Props) {
             <Text style={typography.caption}>{slot.locationName}</Text>
           </View>
           <StatusBadge
-            label={isParked ? 'Your spot' : slot.status}
-            tone={isParked || slot.status === 'Available' ? 'available' : 'occupied'}
+            label={sensorOffline ? 'Sensor offline' : isParked ? 'Your spot' : slot.status}
+            tone={
+              sensorOffline
+                ? 'warning'
+                : isParked || slot.status === 'Available'
+                  ? 'available'
+                  : 'occupied'
+            }
           />
         </View>
         <Text style={styles.eta}>{etaText}</Text>
         <Text style={styles.hint}>{nextHint}</Text>
 
-        <Button
-          title="Open in Maps"
-          onPress={() => void openExternalNavigation(destination, `Parking ${slot.slotNumber}`)}
-          style={styles.primaryGap}
-        />
+        <Button title="Open in Maps" onPress={() => void onOpenMaps()} style={styles.primaryGap} />
         <View style={styles.actions}>
           <Button
             title={isParked ? 'Parked ✓' : 'I’m parked'}
             variant="secondary"
-            disabled={!canPark}
+            disabled={!canPark || !isOnline}
             loading={busy && !isParked}
             onPress={() => void onParked()}
             style={styles.half}
@@ -324,7 +414,7 @@ export function NavigateScreen({ navigation, route }: Props) {
           <Button
             title="Leave slot"
             variant="danger"
-            disabled={!isParked}
+            disabled={!isParked || !isOnline}
             loading={busy && isParked}
             onPress={onLeave}
             style={styles.half}

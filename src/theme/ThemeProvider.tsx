@@ -9,6 +9,8 @@ import {
   type ThemePreference,
   type ThemeScheme,
 } from '../config/theme';
+import { usePreferencesStore } from '../store/preferencesStore';
+import { useConnectivityStore } from '../store/connectivityStore';
 import { useThemeStore } from './themeStore';
 
 type ThemeContextValue = {
@@ -28,10 +30,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const preference = useThemeStore((state) => state.preference);
   const hydrate = useThemeStore((state) => state.hydrate);
   const setPreference = useThemeStore((state) => state.setPreference);
+  const hydratePreferences = usePreferencesStore((state) => state.hydrate);
+  const startConnectivity = useConnectivityStore((state) => state.start);
 
   useEffect(() => {
     void hydrate();
-  }, [hydrate]);
+    void hydratePreferences();
+    return startConnectivity();
+  }, [hydrate, hydratePreferences, startConnectivity]);
 
   const scheme: ThemeScheme = preference === 'dark' ? 'dark' : 'light';
 

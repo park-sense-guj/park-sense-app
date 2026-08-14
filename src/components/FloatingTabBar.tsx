@@ -19,7 +19,7 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
         wrap: {
           alignItems: 'center',
           paddingTop: 4,
-          backgroundColor: 'transparent',
+          backgroundColor: colors.background,
         },
         pillShadow: {
           width: '88%',
@@ -45,8 +45,8 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
           paddingHorizontal: 8,
           overflow: 'hidden',
           borderWidth: 1,
-          borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.65)',
-          backgroundColor: isDark ? 'rgba(22, 36, 32, 0.72)' : 'rgba(255, 255, 255, 0.78)',
+          borderColor: isDark ? 'rgba(255,255,255,0.12)' : colors.glassBorder,
+          backgroundColor: isDark ? colors.tabPill : colors.white,
         },
         item: {
           flex: 1,
@@ -156,8 +156,8 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
       style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 14) }]}
     >
       <View style={styles.pillShadow} collapsable={false}>
-        {Platform.OS === 'ios' ? (
-          <BlurView intensity={isDark ? 28 : 42} tint={isDark ? 'dark' : 'light'} style={styles.pill}>
+        {Platform.OS === 'ios' && isDark ? (
+          <BlurView intensity={28} tint="dark" style={styles.pill}>
             {pillContent}
           </BlurView>
         ) : (

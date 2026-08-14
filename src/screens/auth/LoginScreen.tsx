@@ -3,11 +3,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import {
+  AuthAltMethods,
   AuthDivider,
   AuthFooterLink,
   AuthShell,
-  BiometricSignInButton,
-  GoogleSignInButton,
 } from '../../components/AuthShell';
 import { Button } from '../../components/Button';
 import { TextField } from '../../components/TextField';
@@ -52,6 +51,7 @@ export function LoginScreen({ navigation }: Props) {
           paddingHorizontal: 12,
           paddingVertical: 10,
           marginBottom: 12,
+          marginTop: 10,
         },
         error: { color: colors.occupied, fontWeight: '600', fontSize: 13, lineHeight: 18 },
         forgotRow: { alignItems: 'flex-end', marginTop: -4, marginBottom: 10 },
@@ -142,6 +142,35 @@ export function LoginScreen({ navigation }: Props) {
     }
   }
 
+  const altMethods = [];
+  if (googleReady) {
+    altMethods.push({
+      key: 'google',
+      label: googleLoading ? 'Connecting' : 'Google',
+      accessibilityLabel: 'Continue with Google',
+      icon: 'logo-google' as const,
+      iconColor: colors.primaryDark,
+      loading: googleLoading,
+      disabled: loading || resetLoading,
+      onPress: () => void onGoogleSignIn(),
+      tone: 'neutral' as const,
+    });
+  }
+  if (biometricLabel) {
+    altMethods.push({
+      key: 'biometric',
+      label: biometricLabel,
+      accessibilityLabel: `Sign in with ${biometricLabel}`,
+      icon: (biometricLabel.includes('Face') ? 'scan-outline' : 'finger-print-outline') as
+        | 'scan-outline'
+        | 'finger-print-outline',
+      iconColor: colors.primaryDark,
+      disabled: loading || googleLoading || resetLoading,
+      onPress: () => void onBiometricLogin(),
+      tone: 'primary' as const,
+    });
+  }
+
   return (
     <AuthShell
       variant="login"
@@ -204,26 +233,17 @@ export function LoginScreen({ navigation }: Props) {
         style={styles.primaryGap}
       />
 
-      <AuthDivider />
+      {altMethods.length > 0 ? (
+        <>
+          <AuthDivider label="or continue with" />
+          <AuthAltMethods methods={altMethods} />
+        </>
+      ) : null}
 
-      {googleReady ? (
-        <GoogleSignInButton
-          loading={googleLoading}
-          disabled={loading}
-          onPress={() => void onGoogleSignIn()}
-        />
-      ) : (
+      {!googleReady ? (
         <View style={styles.errorBox}>
           <Text style={styles.error}>Google Sign-In needs EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID in .env.</Text>
         </View>
-      )}
-
-      {biometricLabel ? (
-        <BiometricSignInButton
-          label={biometricLabel}
-          disabled={loading || googleLoading}
-          onPress={() => void onBiometricLogin()}
-        />
       ) : null}
     </AuthShell>
   );

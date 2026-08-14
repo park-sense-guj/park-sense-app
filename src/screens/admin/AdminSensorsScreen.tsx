@@ -1,80 +1,208 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import { Alert, FlatList, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
 import { GlassCard } from '../../components/GlassCard';
 import { Screen } from '../../components/Screen';
-import { ScreenHeader } from '../../components/ScreenHeader';
 import { StatusBadge } from '../../components/StatusBadge';
 import { useParkingSlots } from '../../hooks/useParkingSlots';
 import { setSensorStatus } from '../../services/parkingService';
+import {
+  notifyAdminsSensorFault,
+  notifyAdminsSensorRestored,
+} from '../../services/sensorAlertService';
+import { readableNetworkError } from '../../services/networkService';
+import { useConnectivityStore } from '../../store/connectivityStore';
 import { useTheme } from '../../theme/ThemeProvider';
 
 export function AdminSensorsScreen() {
-  const { colors, typography } = useTheme();
-  const { sensors, slots, loading } = useParkingSlots();
+  const { colors } = useTheme();
+  const { sensors, slots, stats, loading } = useParkingSlots();
+  const isOnline = useConnectivityStore((state) => state.isOnline);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const slotLabel = Object.fromEntries(slots.map((slot) => [slot.slotId, slot.slotNumber]));
+  const slotById = Object.fromEntries(slots.map((slot) => [slot.slotId, slot]));
 
   const styles = useMemo(
     () =>
       StyleSheet.create({
-        list: { gap: 12, paddingBottom: 24 },
-        row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
-        meta: { color: colors.textMuted, marginTop: 8, lineHeight: 20 },
-        action: { marginTop: 12 },
-        loading: { textAlign: 'center', color: colors.textMuted, paddingTop: 32, fontWeight: '600' },
+        header: { marginBottom: 14 },
+        title: {
+          fontSize: 30,
+          fontWeight: '800',
+          color: colors.text,
+          letterSpacing: -0.6,
+        },
+        subtitle: {
+          marginTop: 6,
+          color: colors.textMuted,
+          lineHeight: 20,
+          fontWeight: '500',
+        },
+        summary: {
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          gap: 8,
+          marginBottom: 14,
+        },
+        list: { gap: 12, paddingBottom: 110 },
+        card: { padding: 0, overflow: 'hidden' },
+        accent: { height: 4 },
+        accentOk: { backgroundColor: colors.available },
+        accentBad: { backgroundColor: colors.warning },
+        body: { padding: 16 },
+        row: {
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 12,
+        },
+        identity: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+        iconWrap: {
+          width: 46,
+          height: 46,
+          borderRadius: 23,
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+        iconOk: { backgroundColor: colors.availableSoft },
+        iconBad: { backgroundColor: colors.warningSoft },
+        copy: { flex: 1, minWidth: 0 },
+        slotTitle: {
+          fontSize: 18,
+          fontWeight: '800',
+          color: colors.text,
+          letterSpacing: -0.3,
+        },
+        meta: { marginTop: 3, color: colors.textMuted, fontSize: 13, fontWeight: '600', lineHeight: 18 },
+        hint: {
+          marginTop: 10,
+          padding: 12,
+          borderRadius: 14,
+          backgroundColor: colors.warningSoft,
+        },
+        hintText: { color: colors.warning, fontSize: 13, fontWeight: '700', lineHeight: 18 },
+        action: { marginTop: 14 },
+        loading: { paddingTop: 48, alignItems: 'center', gap: 12 },
+        loadingText: { color: colors.textMuted, fontWeight: '600' },
       }),
     [colors],
   );
 
-  async function toggleFault(sensorId: string, current: string) {
+  async function toggleFault(sensorId: string, current: string, slotId: string) {
+    if (!isOnline) {
+      Alert.alert('You’re offline', 'Reconnect to update sensor status.');
+      return;
+    }
+    const next = current === 'Faulty' ? 'Simulated' : 'Faulty';
+    const slot = slotById[slotId];
+    const slotNumber = slot?.slotNumber ?? slotId;
     setBusyId(sensorId);
     try {
-      await setSensorStatus(sensorId, current === 'Faulty' ? 'Simulated' : 'Faulty');
+      await setSensorStatus(sensorId, next);
+      if (next === 'Faulty') {
+        await notifyAdminsSensorFault({ slotId, slotNumber, sensorId });
+        Alert.alert(
+          'Sensor marked faulty',
+          `${slotNumber} is now offline. Drivers won’t see that pin until you mark it healthy.`,
+        );
+      } else {
+        await notifyAdminsSensorRestored({ slotId, slotNumber });
+        Alert.alert('Sensor restored', `${slotNumber} is visible on the driver map again.`);
+      }
     } catch (error) {
-      Alert.alert('Update failed', error instanceof Error ? error.message : 'Try again.');
+      Alert.alert('Update failed', readableNetworkError(error, 'Try again.'));
     } finally {
       setBusyId(null);
     }
   }
 
   return (
-    <Screen>
-      <ScreenHeader title="Sensors" subtitle="Simulate a disconnect or hardware fault." />
+    <Screen overlayTabBar>
+      <View style={styles.header}>
+        <Text style={styles.title}>Sensors</Text>
+        <Text style={styles.subtitle}>
+          Mark faulty to hide that pin from drivers and notify admins.
+        </Text>
+      </View>
+
+      <View style={styles.summary}>
+        <StatusBadge label={`${stats.healthySensors} healthy`} tone="available" />
+        <StatusBadge label={`${stats.faultySensors} offline`} tone="warning" />
+      </View>
+
       <FlatList
         data={sensors}
         keyExtractor={(item) => item.sensorId}
         contentContainerStyle={styles.list}
+        showsVerticalScrollIndicator={false}
         removeClippedSubviews
         initialNumToRender={6}
         windowSize={7}
         ListEmptyComponent={
           loading ? (
-            <Text style={styles.loading}>Loading sensors…</Text>
+            <View style={styles.loading}>
+              <ActivityIndicator color={colors.primary} />
+              <Text style={styles.loadingText}>Loading sensors…</Text>
+            </View>
           ) : (
-            <EmptyState icon="hardware-chip-outline" title="No sensors" subtitle="Seed the demo lot first." />
+            <EmptyState
+              icon="hardware-chip-outline"
+              title="No sensors"
+              subtitle="Seed the demo lot first."
+            />
           )
         }
         renderItem={({ item }) => {
           const faulty = item.sensorStatus === 'Faulty';
+          const slotNumber = slotById[item.slotId]?.slotNumber ?? item.slotId;
           return (
-            <GlassCard>
-              <View style={styles.row}>
-                <Text style={typography.heading}>{slotLabel[item.slotId] ?? item.slotId}</Text>
-                <StatusBadge label={item.sensorStatus} tone={faulty ? 'warning' : 'available'} />
+            <GlassCard style={styles.card}>
+              <View style={[styles.accent, faulty ? styles.accentBad : styles.accentOk]} />
+              <View style={styles.body}>
+                <View style={styles.row}>
+                  <View style={styles.identity}>
+                    <View style={[styles.iconWrap, faulty ? styles.iconBad : styles.iconOk]}>
+                      <Ionicons
+                        name={faulty ? 'warning-outline' : 'hardware-chip-outline'}
+                        size={22}
+                        color={faulty ? colors.warning : colors.available}
+                      />
+                    </View>
+                    <View style={styles.copy}>
+                      <Text style={styles.slotTitle}>{slotNumber}</Text>
+                      <Text style={styles.meta}>
+                        {item.sensorType} · updated{' '}
+                        {new Date(item.lastUpdated).toLocaleString([], {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: 'numeric',
+                          minute: '2-digit',
+                        })}
+                      </Text>
+                    </View>
+                  </View>
+                  <StatusBadge
+                    label={faulty ? 'Sensor offline' : 'Healthy'}
+                    tone={faulty ? 'warning' : 'available'}
+                  />
+                </View>
+                {faulty ? (
+                  <View style={styles.hint}>
+                    <Text style={styles.hintText}>
+                      Hidden from the driver map until you mark this sensor healthy.
+                    </Text>
+                  </View>
+                ) : null}
+                <Button
+                  title={faulty ? 'Mark healthy' : 'Mark faulty'}
+                  variant={faulty ? 'primary' : 'secondary'}
+                  loading={busyId === item.sensorId}
+                  onPress={() => void toggleFault(item.sensorId, item.sensorStatus, item.slotId)}
+                  style={styles.action}
+                />
               </View>
-              <Text style={styles.meta}>
-                {item.sensorType} sensor · updated {new Date(item.lastUpdated).toLocaleString()}
-              </Text>
-              <Button
-                title={faulty ? 'Mark healthy' : 'Mark faulty'}
-                variant={faulty ? 'primary' : 'secondary'}
-                loading={busyId === item.sensorId}
-                onPress={() => void toggleFault(item.sensorId, item.sensorStatus)}
-                style={styles.action}
-              />
             </GlassCard>
           );
         }}

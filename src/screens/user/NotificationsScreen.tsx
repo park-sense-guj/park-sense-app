@@ -1,14 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { CommonActions, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useMemo } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EmptyState } from '../../components/EmptyState';
 import { GlassCard } from '../../components/GlassCard';
 import { Screen } from '../../components/Screen';
 import { StatusBadge } from '../../components/StatusBadge';
-import { radius } from '../../config/theme';
 import { useNotifications } from '../../hooks/useNotifications';
 import type { UserStackParamList } from '../../navigation/types';
 import { markNotificationRead } from '../../services/notificationService';
@@ -18,24 +18,37 @@ import type { AppNotification } from '../../types';
 
 export function NotificationsScreen() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<UserStackParamList>>();
   const profile = useAuthStore((state) => state.profile);
   const { items, unreadCount } = useNotifications(profile?.userId);
+  // Transparent stack header: leave room for the back control.
+  const headerOffset = insets.top + 44;
 
   const styles = useMemo(
     () =>
       StyleSheet.create({
         flex: { flex: 1 },
+        headerPad: { paddingTop: headerOffset },
+        title: {
+          fontSize: 32,
+          fontWeight: '800',
+          color: colors.text,
+          letterSpacing: -0.6,
+        },
+        subtitle: {
+          marginTop: 6,
+          marginBottom: 16,
+          color: colors.textMuted,
+          lineHeight: 20,
+        },
         summary: {
           flexDirection: 'row',
           alignItems: 'center',
           gap: 12,
-          marginBottom: 16,
-          padding: 14,
-          borderRadius: radius.lg,
-          backgroundColor: colors.cardSolid,
-          borderWidth: 1,
-          borderColor: colors.glassBorder,
+          marginBottom: 14,
+          paddingVertical: 14,
+          paddingHorizontal: 14,
         },
         summaryIcon: {
           width: 44,
@@ -59,6 +72,15 @@ export function NotificationsScreen() {
           color: colors.textMuted,
           fontWeight: '600',
         },
+        mapLink: {
+          marginTop: 10,
+          alignSelf: 'flex-start',
+          paddingVertical: 8,
+          paddingHorizontal: 12,
+          borderRadius: 12,
+          backgroundColor: colors.primarySoft,
+        },
+        mapLinkText: { color: colors.primaryDark, fontWeight: '800', fontSize: 13 },
         list: {
           flexGrow: 1,
           gap: 10,
@@ -113,37 +135,67 @@ export function NotificationsScreen() {
           fontWeight: '600',
           color: colors.textMuted,
         },
-        chevron: { marginTop: 10 },
       }),
-    [colors],
+    [colors, headerOffset],
   );
 
-  async function openAlert(item: AppNotification) {
+  /** Return to the existing Home tab — never push another Home on the stack. */
+  function returnToHome() {
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [
+          {
+            name: 'UserTabs',
+            params: { screen: 'MapTab' },
+          },
+        ],
+      }),
+    );
+  }
+
+  async function onAlertPress(item: AppNotification) {
     if (!profile?.userId) {
       return;
     }
     if (!item.isRead) {
       await markNotificationRead(profile.userId, item.notificationId);
     }
-    navigation.navigate('UserTabs', { screen: 'MapTab' });
   }
 
   return (
-    <Screen edges={[]} style={styles.flex}>
-      <View style={styles.summary}>
-        <View style={styles.summaryIcon}>
-          <Ionicons name="notifications-outline" size={22} color={colors.primary} />
-        </View>
-        <View style={styles.summaryCopy}>
-          <Text style={styles.summaryTitle}>
-            {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
-          </Text>
-          <Text style={styles.summaryText}>
-            {unreadCount > 0
-              ? 'Tap an alert to mark it read and jump to the map.'
-              : 'Watch a taken pin on Home to get availability alerts here.'}
-          </Text>
-        </View>
+    <Screen edges={['bottom']} style={styles.flex}>
+      <View style={styles.headerPad}>
+        <Text style={styles.title}>Alerts</Text>
+        <Text style={styles.subtitle}>
+          {unreadCount > 0
+            ? `${unreadCount} unread · tap an alert to mark it read`
+            : 'Lot availability and parking updates land here'}
+        </Text>
+
+        <GlassCard style={styles.summary}>
+          <View style={styles.summaryIcon}>
+            <Ionicons name="notifications-outline" size={22} color={colors.primary} />
+          </View>
+          <View style={styles.summaryCopy}>
+            <Text style={styles.summaryTitle}>
+              {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
+            </Text>
+            <Text style={styles.summaryText}>
+              {unreadCount > 0
+                ? 'Use Back or Open Home when you’re done.'
+                : 'Watch a taken pin on Home to get availability alerts here.'}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Open Home"
+              onPress={returnToHome}
+              style={styles.mapLink}
+            >
+              <Text style={styles.mapLinkText}>Open Home</Text>
+            </Pressable>
+          </View>
+        </GlassCard>
       </View>
 
       <FlatList
@@ -157,19 +209,15 @@ export function NotificationsScreen() {
             title="No alerts yet"
             subtitle="On Home, tap a red pin and choose Watch lot. We’ll notify you when a space opens."
             actionLabel="Open Home"
-            onAction={() =>
-              navigation.navigate('UserTabs', {
-                screen: 'MapTab',
-              })
-            }
+            onAction={returnToHome}
           />
         }
         renderItem={({ item }) => (
           <GlassCard style={styles.card}>
             <Pressable
-              onPress={() => void openAlert(item)}
+              onPress={() => void onAlertPress(item)}
               accessibilityRole="button"
-              accessibilityLabel={item.isRead ? 'Read alert' : 'Unread alert'}
+              accessibilityLabel={item.isRead ? 'Read alert' : 'Mark alert as read'}
               style={[styles.row, !item.isRead && styles.rowUnread]}
             >
               <View style={[styles.iconWrap, item.isRead && styles.iconWrapRead]}>
@@ -189,12 +237,6 @@ export function NotificationsScreen() {
                 <Text style={[styles.body, item.isRead && styles.bodyRead]}>{item.message}</Text>
                 <Text style={styles.time}>{formatAlertTime(item.createdTime)}</Text>
               </View>
-              <Ionicons
-                name="chevron-forward"
-                size={18}
-                color={colors.textMuted}
-                style={styles.chevron}
-              />
             </Pressable>
           </GlassCard>
         )}

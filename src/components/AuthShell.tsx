@@ -216,14 +216,15 @@ export function AuthDivider({ label = 'or' }: DividerProps) {
         row: {
           flexDirection: 'row',
           alignItems: 'center',
-          gap: 12,
-          marginVertical: 18,
+          gap: 10,
+          marginTop: 16,
+          marginBottom: 12,
         },
         line: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
         label: {
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: '700',
-          letterSpacing: 0.6,
+          letterSpacing: 0.8,
           color: colors.textMuted,
           textTransform: 'uppercase',
         },
@@ -236,6 +237,122 @@ export function AuthDivider({ label = 'or' }: DividerProps) {
       <View style={styles.line} />
       <Text style={styles.label}>{label}</Text>
       <View style={styles.line} />
+    </View>
+  );
+}
+
+type AltMethod = {
+  key: string;
+  label: string;
+  accessibilityLabel: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  iconColor: string;
+  loading?: boolean;
+  disabled?: boolean;
+  onPress: () => void;
+  /** Soft teal chip vs neutral white chip */
+  tone?: 'neutral' | 'primary';
+};
+
+type AuthAltMethodsProps = {
+  methods: AltMethod[];
+};
+
+/** Compact side-by-side alt sign-in chips (Google / Face ID). */
+export function AuthAltMethods({ methods }: AuthAltMethodsProps) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        row: {
+          flexDirection: 'row',
+          gap: 8,
+        },
+        chip: {
+          flex: 1,
+          minHeight: 44,
+          borderRadius: radius.md,
+          borderWidth: 1,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 8,
+          paddingVertical: 10,
+          paddingHorizontal: 12,
+        },
+        chipNeutral: {
+          backgroundColor: isDark ? colors.backgroundAlt : colors.white,
+          borderColor: colors.borderStrong,
+        },
+        chipPrimary: {
+          backgroundColor: colors.primarySoft,
+          borderColor: colors.border,
+        },
+        iconWrap: {
+          width: 26,
+          height: 26,
+          borderRadius: 13,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: colors.primaryMuted,
+        },
+        iconWrapNeutral: {
+          backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : colors.primaryMuted,
+        },
+        label: {
+          fontSize: 13,
+          fontWeight: '700',
+          color: colors.primaryDark,
+          textAlign: 'center',
+        },
+        labelPrimary: {
+          color: colors.primaryDark,
+        },
+        pressed: { opacity: 0.88, transform: [{ scale: 0.98 }] },
+        disabled: { opacity: 0.5 },
+      }),
+    [colors, isDark],
+  );
+
+  if (methods.length === 0) {
+    return null;
+  }
+
+  return (
+    <View style={styles.row}>
+      {methods.map((method) => {
+        const primary = method.tone === 'primary';
+        return (
+          <Pressable
+            key={method.key}
+            accessibilityRole="button"
+            accessibilityLabel={method.accessibilityLabel}
+            accessibilityState={{
+              disabled: Boolean(method.disabled || method.loading),
+              busy: Boolean(method.loading),
+            }}
+            disabled={method.disabled || method.loading}
+            onPress={method.onPress}
+            style={({ pressed }) => [
+              styles.chip,
+              primary ? styles.chipPrimary : styles.chipNeutral,
+              (method.disabled || method.loading) && styles.disabled,
+              pressed && styles.pressed,
+            ]}
+          >
+            <View style={[styles.iconWrap, !primary && styles.iconWrapNeutral]}>
+              <Ionicons name={method.icon} size={15} color={method.iconColor} />
+            </View>
+            <Text
+              style={[styles.label, primary && styles.labelPrimary]}
+              numberOfLines={1}
+              maxFontSizeMultiplier={1.2}
+            >
+              {method.loading ? '…' : method.label}
+            </Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -290,7 +407,7 @@ export function GoogleSignInButton({
         pressed && styles.pressed,
       ]}
     >
-      <Ionicons name="logo-google" size={18} color="#EA4335" style={styles.icon} />
+      <Ionicons name="logo-google" size={18} color={colors.primaryDark} style={styles.icon} />
       <Text style={styles.label}>{loading ? 'Connecting…' : label}</Text>
     </Pressable>
   );

@@ -20,6 +20,11 @@ import { TextField } from '../../components/TextField';
 import { radius } from '../../config/theme';
 import type { ThemePreference } from '../../config/theme';
 import {
+  ABOUT_SHEETS,
+  getAppVersionLabel,
+  type AboutSheetId,
+} from '../../content/aboutContent';
+import {
   confirmCurrentPassword,
   deleteUserAccount,
   getSessionPassword,
@@ -36,8 +41,10 @@ import {
   isBiometricAvailable,
   isBiometricEnabled,
 } from '../../services/biometricService';
+import { playSelectionFeedback } from '../../services/feedbackService';
 import { pickProfilePhoto, type PhotoSource } from '../../services/photoService';
 import { useAuthStore } from '../../store/authStore';
+import { usePreferencesStore } from '../../store/preferencesStore';
 import { useTheme } from '../../theme/ThemeProvider';
 
 const APPEARANCE_OPTIONS: {
@@ -56,6 +63,10 @@ export function ProfileScreen() {
   const profile = useAuthStore((state) => state.profile);
   const firebaseUser = useAuthStore((state) => state.firebaseUser);
   const signOut = useAuthStore((state) => state.signOut);
+  const hapticsEnabled = usePreferencesStore((state) => state.hapticsEnabled);
+  const soundCuesEnabled = usePreferencesStore((state) => state.soundCuesEnabled);
+  const setHapticsEnabled = usePreferencesStore((state) => state.setHapticsEnabled);
+  const setSoundCuesEnabled = usePreferencesStore((state) => state.setSoundCuesEnabled);
   const isGoogleAccount = Boolean(
     firebaseUser?.providerData.some((provider) => provider.providerId === 'google.com'),
   );
@@ -69,6 +80,7 @@ export function ProfileScreen() {
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoSheet, setPhotoSheet] = useState(false);
   const [accountSheet, setAccountSheet] = useState<AccountSheet>(null);
+  const [aboutSheet, setAboutSheet] = useState<AboutSheetId | null>(null);
   const [passwordModal, setPasswordModal] = useState(false);
   const [deleteModal, setDeleteModal] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -80,132 +92,150 @@ export function ProfileScreen() {
   const initials = initialsFromName(profile?.fullName);
   const nameDirty = fullName.trim() !== (profile?.fullName ?? '');
   const emailDirty = email.trim().toLowerCase() !== (profile?.email ?? '');
+  const appVersionLabel = getAppVersionLabel();
+  const activeAbout = ABOUT_SHEETS.find((sheet) => sheet.id === aboutSheet) ?? null;
 
   const styles = useMemo(
     () =>
       StyleSheet.create({
         flex: { flex: 1 },
-        scroll: { paddingBottom: 28, gap: 14 },
+        scroll: { paddingBottom: 24, gap: 10 },
         pageTitle: {
-          fontSize: 28,
+          fontSize: 24,
           fontWeight: '800',
           color: colors.text,
-          letterSpacing: -0.6,
-          marginBottom: 4,
+          letterSpacing: -0.5,
+          marginBottom: 2,
         },
         hero: {
           alignItems: 'center',
-          paddingVertical: 22,
-          paddingHorizontal: 16,
-          gap: 8,
+          paddingVertical: 14,
+          paddingHorizontal: 14,
+          gap: 4,
         },
-        avatarWrap: { position: 'relative', marginBottom: 4 },
+        compactCard: {
+          paddingVertical: 12,
+          paddingHorizontal: 12,
+        },
+        avatarWrap: { position: 'relative', marginBottom: 2 },
         cameraBadge: {
           position: 'absolute',
           right: -2,
           bottom: -2,
-          width: 34,
-          height: 34,
-          borderRadius: 17,
+          width: 28,
+          height: 28,
+          borderRadius: 14,
           backgroundColor: colors.primary,
           alignItems: 'center',
           justifyContent: 'center',
-          borderWidth: 3,
+          borderWidth: 2,
           borderColor: colors.cardSolid,
         },
         heroName: {
-          fontSize: 22,
+          fontSize: 18,
           fontWeight: '800',
           color: colors.text,
-          letterSpacing: -0.4,
+          letterSpacing: -0.3,
           textAlign: 'center',
         },
-        heroEmail: { fontSize: 14, color: colors.textMuted, textAlign: 'center' },
+        heroEmail: { fontSize: 13, color: colors.textMuted, textAlign: 'center' },
         photoHint: { marginTop: 2, fontSize: 12, fontWeight: '600', color: colors.primaryDark },
         cardTitle: {
-          fontSize: 13,
+          fontSize: 11,
           fontWeight: '800',
-          letterSpacing: 0.8,
+          letterSpacing: 0.7,
           color: colors.textMuted,
-          marginBottom: 4,
+          marginBottom: 2,
         },
         infoRow: {
           flexDirection: 'row',
           alignItems: 'center',
-          gap: 12,
-          paddingVertical: 12,
+          gap: 10,
+          paddingVertical: 8,
         },
         infoIcon: {
-          width: 44,
-          height: 44,
-          borderRadius: 22,
+          width: 34,
+          height: 34,
+          borderRadius: 17,
           backgroundColor: colors.primarySoft,
           alignItems: 'center',
           justifyContent: 'center',
         },
         infoCopy: { flex: 1, minWidth: 0 },
-        infoLabel: { fontSize: 12, fontWeight: '700', color: colors.textMuted, letterSpacing: 0.2 },
-        infoValue: { marginTop: 3, fontSize: 16, fontWeight: '700', color: colors.text },
+        infoLabel: { fontSize: 11, fontWeight: '700', color: colors.textMuted, letterSpacing: 0.2 },
+        infoValue: { marginTop: 1, fontSize: 14, fontWeight: '700', color: colors.text },
         infoValueMuted: { color: colors.textMuted },
-        infoHint: { marginTop: 4, fontSize: 12, color: colors.textMuted, lineHeight: 16 },
+        infoHint: { marginTop: 2, fontSize: 11, color: colors.textMuted, lineHeight: 14 },
         infoDivider: {
           height: StyleSheet.hairlineWidth,
           backgroundColor: colors.border,
-          marginLeft: 56,
+          marginLeft: 44,
         },
         rowDisabled: { opacity: 0.72 },
         appearanceRow: {
           flexDirection: 'row',
-          gap: 8,
+          gap: 3,
           backgroundColor: colors.primaryMuted,
-          borderRadius: radius.md,
-          padding: 4,
-          marginTop: 8,
+          borderRadius: radius.pill,
+          padding: 2,
+          marginTop: 6,
         },
         appearanceItem: {
           flex: 1,
-          minHeight: 72,
-          borderRadius: radius.sm,
+          minHeight: 34,
+          borderRadius: radius.pill,
+          flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: 6,
-          paddingVertical: 12,
+          gap: 5,
+          paddingHorizontal: 8,
         },
         appearanceItemActive: {
           backgroundColor: colors.cardSolid,
         },
-        appearanceLabel: { fontSize: 13, fontWeight: '600', color: colors.textMuted },
+        appearanceLabel: { fontSize: 12, fontWeight: '600', color: colors.textMuted },
         appearanceLabelActive: { color: colors.primaryDark, fontWeight: '700' },
-        securityRow: {
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 12,
-          paddingVertical: 8,
-        },
-        securityIcon: {
-          width: 44,
-          height: 44,
-          borderRadius: 22,
-          backgroundColor: colors.primarySoft,
-          alignItems: 'center',
-          justifyContent: 'center',
-        },
-        securityCopy: { flex: 1 },
-        securityTitle: { fontSize: 16, fontWeight: '700', color: colors.text },
-        securitySubtitle: { marginTop: 2, fontSize: 13, color: colors.textMuted, lineHeight: 18 },
         toggle: {
-          minWidth: 52,
-          paddingHorizontal: 12,
-          paddingVertical: 8,
+          minWidth: 40,
+          paddingHorizontal: 8,
+          paddingVertical: 5,
           borderRadius: radius.pill,
           backgroundColor: colors.primaryMuted,
           alignItems: 'center',
         },
         toggleOn: { backgroundColor: colors.primary },
-        toggleText: { fontSize: 12, fontWeight: '800', color: colors.primaryDark },
+        toggleText: { fontSize: 10, fontWeight: '800', color: colors.primaryDark },
         toggleTextOn: { color: colors.white },
         toggleDisabled: { backgroundColor: colors.border },
         toggleTextDisabled: { color: colors.textMuted },
+        statusMeta: {
+          fontSize: 13,
+          fontWeight: '600',
+          color: colors.primary,
+        },
+        aboutSheetCard: {
+          backgroundColor: colors.cardSolid,
+          borderTopLeftRadius: radius.xl,
+          borderTopRightRadius: radius.xl,
+          padding: 20,
+          paddingBottom: 28,
+          borderWidth: 1,
+          borderColor: colors.glassBorder,
+          maxHeight: '88%',
+        },
+        aboutScroll: { marginTop: 4, marginBottom: 12 },
+        aboutSection: { marginBottom: 14 },
+        aboutHeading: {
+          fontSize: 14,
+          fontWeight: '800',
+          color: colors.text,
+          marginBottom: 4,
+        },
+        aboutBody: {
+          fontSize: 13,
+          lineHeight: 19,
+          color: colors.textMuted,
+        },
         modalRoot: {
           flex: 1,
           backgroundColor: colors.overlay,
@@ -245,40 +275,30 @@ export function ProfileScreen() {
           justifyContent: 'center',
         },
         photoOptionText: { flex: 1, fontSize: 16, fontWeight: '700', color: colors.text },
-        logoutCard: {
-          flexDirection: 'row',
+        sessionFooter: {
+          marginTop: 8,
+          marginBottom: 8,
           alignItems: 'center',
-          gap: 12,
-          paddingVertical: 4,
+          gap: 8,
+          paddingHorizontal: 8,
         },
-        logoutIcon: {
-          width: 44,
-          height: 44,
-          borderRadius: 22,
-          backgroundColor: colors.occupiedSoft,
-          alignItems: 'center',
-          justifyContent: 'center',
+        deleteLink: {
+          paddingVertical: 10,
+          paddingHorizontal: 16,
         },
-        logoutCopy: { flex: 1 },
-        logoutTitle: { fontSize: 16, fontWeight: '700', color: colors.occupied },
-        logoutSubtitle: { marginTop: 2, fontSize: 13, color: colors.textMuted },
-        dangerCard: {
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 12,
-          paddingVertical: 4,
+        deleteLinkText: {
+          fontSize: 15,
+          fontWeight: '700',
+          color: colors.occupied,
+          textAlign: 'center',
         },
-        dangerIcon: {
-          width: 44,
-          height: 44,
-          borderRadius: 22,
-          backgroundColor: colors.occupiedSoft,
-          alignItems: 'center',
-          justifyContent: 'center',
+        deleteHint: {
+          fontSize: 12,
+          lineHeight: 17,
+          color: colors.textMuted,
+          textAlign: 'center',
+          maxWidth: 280,
         },
-        dangerCopy: { flex: 1 },
-        dangerTitle: { fontSize: 16, fontWeight: '700', color: colors.occupied },
-        dangerSubtitle: { marginTop: 2, fontSize: 13, color: colors.textMuted, lineHeight: 18 },
       }),
     [colors],
   );
@@ -531,17 +551,17 @@ export function ProfileScreen() {
               accessibilityLabel="Change profile photo"
               style={styles.avatarWrap}
             >
-              <Avatar initials={initials} photoUrl={profile?.photoUrl} size={104} />
+              <Avatar initials={initials} photoUrl={profile?.photoUrl} size={80} />
               <View style={styles.cameraBadge}>
-                <Ionicons name={photoBusy ? 'hourglass-outline' : 'camera'} size={16} color={colors.white} />
+                <Ionicons name={photoBusy ? 'hourglass-outline' : 'camera'} size={14} color={colors.white} />
               </View>
             </Pressable>
             <Text style={styles.heroName}>{profile?.fullName ?? 'ParkSense User'}</Text>
             <Text style={styles.heroEmail}>{profile?.email ?? ''}</Text>
-            <Text style={styles.photoHint}>{photoBusy ? 'Saving photo…' : 'Tap photo to update'}</Text>
+            {photoBusy ? <Text style={styles.photoHint}>Saving photo…</Text> : null}
           </GlassCard>
 
-          <GlassCard>
+          <GlassCard style={styles.compactCard}>
             <Text style={styles.cardTitle}>ACCOUNT</Text>
             <Pressable
               onPress={() => openAccountSheet('name')}
@@ -550,7 +570,7 @@ export function ProfileScreen() {
               style={styles.infoRow}
             >
               <View style={styles.infoIcon}>
-                <Ionicons name="person-outline" size={20} color={colors.primary} />
+                <Ionicons name="person-outline" size={17} color={colors.primary} />
               </View>
               <View style={styles.infoCopy}>
                 <Text style={styles.infoLabel}>Name</Text>
@@ -558,7 +578,7 @@ export function ProfileScreen() {
                   {profile?.fullName || 'Add your name'}
                 </Text>
               </View>
-              <Ionicons name="pencil-outline" size={16} color={colors.textMuted} />
+              <Ionicons name="pencil-outline" size={14} color={colors.textMuted} />
             </Pressable>
             <View style={styles.infoDivider} />
             <Pressable
@@ -569,7 +589,7 @@ export function ProfileScreen() {
               style={[styles.infoRow, isGoogleAccount && styles.rowDisabled]}
             >
               <View style={styles.infoIcon}>
-                <Ionicons name="mail-outline" size={20} color={colors.primary} />
+                <Ionicons name="mail-outline" size={17} color={colors.primary} />
               </View>
               <View style={styles.infoCopy}>
                 <Text style={styles.infoLabel}>Email</Text>
@@ -580,18 +600,18 @@ export function ProfileScreen() {
                   {profile?.email || 'Add your email'}
                 </Text>
                 {isGoogleAccount ? (
-                  <Text style={styles.infoHint}>Managed by Google · can’t change here</Text>
+                  <Text style={styles.infoHint}>Managed by Google</Text>
                 ) : null}
               </View>
               <Ionicons
                 name={isGoogleAccount ? 'lock-closed-outline' : 'pencil-outline'}
-                size={16}
+                size={14}
                 color={colors.textMuted}
               />
             </Pressable>
           </GlassCard>
 
-          <GlassCard>
+          <GlassCard style={styles.compactCard}>
             <Text style={styles.cardTitle}>APPEARANCE</Text>
             <View style={styles.appearanceRow}>
               {APPEARANCE_OPTIONS.map((option) => {
@@ -603,14 +623,11 @@ export function ProfileScreen() {
                     accessibilityState={{ selected: active }}
                     accessibilityLabel={option.label}
                     onPress={() => void setPreference(option.value)}
-                    style={[
-                      styles.appearanceItem,
-                      active && styles.appearanceItemActive,
-                    ]}
+                    style={[styles.appearanceItem, active && styles.appearanceItemActive]}
                   >
                     <Ionicons
                       name={option.icon}
-                      size={20}
+                      size={14}
                       color={active ? colors.primaryDark : colors.textMuted}
                     />
                     <Text style={[styles.appearanceLabel, active && styles.appearanceLabelActive]}>
@@ -622,30 +639,113 @@ export function ProfileScreen() {
             </View>
           </GlassCard>
 
-          <GlassCard>
+          <GlassCard style={styles.compactCard}>
+            <Text style={styles.cardTitle}>FEEDBACK</Text>
+            <Pressable
+              onPress={() => {
+                playSelectionFeedback();
+                void setHapticsEnabled(!hapticsEnabled);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Haptics"
+              accessibilityState={{ checked: hapticsEnabled }}
+              style={styles.infoRow}
+            >
+              <View style={styles.infoIcon}>
+                <Ionicons name="phone-portrait-outline" size={17} color={colors.primary} />
+              </View>
+              <View style={styles.infoCopy}>
+                <Text style={styles.infoValue}>Haptics</Text>
+                <Text style={styles.infoHint}>
+                  Light taps on key actions like parking and leaving a slot.
+                </Text>
+              </View>
+              <Text style={styles.statusMeta}>{hapticsEnabled ? 'On' : 'Off'}</Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+            </Pressable>
+            <View style={styles.infoDivider} />
+            <Pressable
+              onPress={() => {
+                playSelectionFeedback();
+                void setSoundCuesEnabled(!soundCuesEnabled);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Sound cues"
+              accessibilityState={{ checked: soundCuesEnabled }}
+              style={styles.infoRow}
+            >
+              <View style={styles.infoIcon}>
+                <Ionicons name="volume-medium-outline" size={17} color={colors.primary} />
+              </View>
+              <View style={styles.infoCopy}>
+                <Text style={styles.infoValue}>Sound cues</Text>
+                <Text style={styles.infoHint}>
+                  Success and error confirmation cues. Turn off for a quieter experience.
+                </Text>
+              </View>
+              <Text style={styles.statusMeta}>{soundCuesEnabled ? 'On' : 'Off'}</Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+            </Pressable>
+          </GlassCard>
+
+          <GlassCard style={styles.compactCard}>
+            <Text style={styles.cardTitle}>ABOUT</Text>
+            {ABOUT_SHEETS.map((sheet, index) => (
+              <View key={sheet.id}>
+                {index > 0 ? <View style={styles.infoDivider} /> : null}
+                <Pressable
+                  onPress={() => setAboutSheet(sheet.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={sheet.title}
+                  style={styles.infoRow}
+                >
+                  <View style={styles.infoIcon}>
+                    <Ionicons name={sheet.icon} size={17} color={colors.primary} />
+                  </View>
+                  <View style={styles.infoCopy}>
+                    <Text style={styles.infoValue}>{sheet.title}</Text>
+                    <Text style={styles.infoHint}>{sheet.subtitle}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+                </Pressable>
+              </View>
+            ))}
+            <View style={styles.infoDivider} />
+            <View style={styles.infoRow} accessibilityLabel={`App version ${appVersionLabel}`}>
+              <View style={styles.infoIcon}>
+                <Ionicons name="information-circle-outline" size={17} color={colors.primary} />
+              </View>
+              <View style={styles.infoCopy}>
+                <Text style={styles.infoValue}>App Version</Text>
+                <Text style={styles.infoHint}>{appVersionLabel}</Text>
+              </View>
+            </View>
+          </GlassCard>
+
+          <GlassCard style={styles.compactCard}>
             <Text style={styles.cardTitle}>SECURITY</Text>
             <Pressable
               onPress={() => void toggleBiometrics()}
               accessibilityRole="button"
               accessibilityLabel={`${biometricLabel} sign-in`}
               accessibilityState={{ disabled: isGoogleAccount }}
-              style={[styles.securityRow, isGoogleAccount && styles.rowDisabled]}
+              style={[styles.infoRow, isGoogleAccount && styles.rowDisabled]}
             >
-              <View style={styles.securityIcon}>
+              <View style={styles.infoIcon}>
                 <Ionicons
                   name={biometricLabel.includes('Face') ? 'scan-outline' : 'finger-print-outline'}
-                  size={20}
+                  size={17}
                   color={colors.primary}
                 />
               </View>
-              <View style={styles.securityCopy}>
-                <Text style={styles.securityTitle}>{biometricLabel}</Text>
-                <Text style={styles.securitySubtitle}>
+              <View style={styles.infoCopy}>
+                <Text style={styles.infoValue}>{biometricLabel}</Text>
+                <Text style={styles.infoHint}>
                   {isGoogleAccount
-                    ? 'Not available for Google accounts. Use Continue with Google to sign in.'
+                    ? 'Unavailable for Google accounts'
                     : hardware
-                      ? `Sign in faster with ${biometricLabel} after you log out.`
-                      : 'Not available on this device yet.'}
+                      ? 'Faster sign-in after logout'
+                      : 'Not available on this device'}
                 </Text>
               </View>
               <View
@@ -668,45 +768,71 @@ export function ProfileScreen() {
             </Pressable>
           </GlassCard>
 
-          <GlassCard>
+          <GlassCard style={styles.compactCard}>
+            <Text style={styles.cardTitle}>SESSION</Text>
             <Pressable
               onPress={confirmSignOut}
               accessibilityRole="button"
               accessibilityLabel="Log out"
-              style={styles.logoutCard}
+              style={styles.infoRow}
             >
-              <View style={styles.logoutIcon}>
-                <Ionicons name="log-out-outline" size={20} color={colors.occupied} />
+              <View style={styles.infoIcon}>
+                <Ionicons name="log-out-outline" size={17} color={colors.primary} />
               </View>
-              <View style={styles.logoutCopy}>
-                <Text style={styles.logoutTitle}>Log out</Text>
-                <Text style={styles.logoutSubtitle}>Sign out of this device</Text>
+              <View style={styles.infoCopy}>
+                <Text style={styles.infoValue}>Log out</Text>
+                <Text style={styles.infoHint}>Sign out of this device</Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
             </Pressable>
           </GlassCard>
 
-          <GlassCard>
+          <View style={styles.sessionFooter}>
             <Pressable
               onPress={openDeleteAccount}
               accessibilityRole="button"
               accessibilityLabel="Delete account"
               disabled={deleteBusy}
-              style={styles.dangerCard}
+              style={styles.deleteLink}
             >
-              <View style={styles.dangerIcon}>
-                <Ionicons name="trash-outline" size={20} color={colors.occupied} />
-              </View>
-              <View style={styles.dangerCopy}>
-                <Text style={styles.dangerTitle}>Delete account</Text>
-                <Text style={styles.dangerSubtitle}>
-                  Permanently remove your profile, history, and alerts
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              <Text style={styles.deleteLinkText}>
+                {deleteBusy ? 'Deleting…' : 'Delete account'}
+              </Text>
             </Pressable>
-          </GlassCard>
+            <Text style={styles.deleteHint}>
+              Permanently removes your profile, parking history, and alerts.
+            </Text>
+          </View>
         </ScrollView>
+
+      <Modal
+        visible={aboutSheet !== null}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setAboutSheet(null)}
+      >
+        <Pressable style={styles.modalRoot} onPress={() => setAboutSheet(null)}>
+          <Pressable style={styles.aboutSheetCard} onPress={() => undefined}>
+            <Text style={styles.modalTitle}>{activeAbout?.title ?? 'About'}</Text>
+            <Text style={styles.modalHint}>{activeAbout?.subtitle}</Text>
+            <ScrollView
+              style={styles.aboutScroll}
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+            >
+              {activeAbout?.sections.map((section) => (
+                <View key={`${activeAbout.id}-${section.heading ?? section.body}`} style={styles.aboutSection}>
+                  {section.heading ? (
+                    <Text style={styles.aboutHeading}>{section.heading}</Text>
+                  ) : null}
+                  <Text style={styles.aboutBody}>{section.body}</Text>
+                </View>
+              ))}
+            </ScrollView>
+            <Button title="Done" variant="secondary" onPress={() => setAboutSheet(null)} />
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal
         visible={photoSheet}

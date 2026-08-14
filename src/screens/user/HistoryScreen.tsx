@@ -102,6 +102,7 @@ export function HistoryScreen() {
         photoUrl={profile?.photoUrl}
         alertsBadge={unreadCount}
         onAlertsPress={() => navigation.navigate('Alerts')}
+        onProfilePress={() => tabNavigation.navigate('ProfileTab')}
       />
       <Text style={styles.title}>Activity</Text>
       <Text style={styles.subtitle}>

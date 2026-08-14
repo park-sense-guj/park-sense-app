@@ -11,6 +11,7 @@ type Props = {
   photoUrl?: string | null;
   alertsBadge?: number;
   onAlertsPress?: () => void;
+  onProfilePress?: () => void;
 };
 
 function BrandHeaderComponent({
@@ -19,6 +20,7 @@ function BrandHeaderComponent({
   photoUrl,
   alertsBadge = 0,
   onAlertsPress,
+  onProfilePress,
 }: Props) {
   const { colors } = useTheme();
 
@@ -56,6 +58,9 @@ function BrandHeaderComponent({
           borderWidth: 1,
           borderColor: colors.border,
         },
+        avatarBtn: {
+          borderRadius: 20,
+        },
         badge: {
           position: 'absolute',
           top: -2,
@@ -74,6 +79,8 @@ function BrandHeaderComponent({
       }),
     [colors],
   );
+
+  const avatar = <Avatar initials={initials} photoUrl={photoUrl} size={40} />;
 
   return (
     <View style={[styles.row, compact && styles.rowCompact]}>
@@ -98,7 +105,18 @@ function BrandHeaderComponent({
             ) : null}
           </Pressable>
         ) : null}
-        <Avatar initials={initials} photoUrl={photoUrl} size={40} />
+        {onProfilePress ? (
+          <Pressable
+            onPress={onProfilePress}
+            accessibilityRole="button"
+            accessibilityLabel="Open profile"
+            style={({ pressed }) => [styles.avatarBtn, pressed && { opacity: 0.85 }]}
+          >
+            {avatar}
+          </Pressable>
+        ) : (
+          avatar
+        )}
       </View>
     </View>
   );

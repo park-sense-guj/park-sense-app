@@ -3,7 +3,7 @@ import {
   createBottomTabNavigator,
   type BottomTabBarProps,
 } from '@react-navigation/bottom-tabs';
-import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useMemo } from 'react';
 
@@ -52,8 +52,9 @@ function UserTabNavigator() {
       tabBarActiveTintColor: colors.tabActiveText,
       tabBarInactiveTintColor: colors.tabInactive,
       tabBarHideOnKeyboard: true,
+      sceneContainerStyle: { backgroundColor: colors.background },
       tabBarStyle: {
-        backgroundColor: 'transparent',
+        backgroundColor: colors.background,
         borderTopWidth: 0,
         elevation: 0,
         shadowOpacity: 0,
@@ -137,9 +138,12 @@ function UserNavigator() {
         name="Alerts"
         component={NotificationsScreen}
         options={{
-          title: 'Alerts',
+          title: '',
           headerBackTitle: 'Back',
-          headerLargeTitle: false,
+          headerTransparent: true,
+          headerShadowVisible: false,
+          headerStyle: { backgroundColor: 'transparent' },
+          contentStyle: { backgroundColor: colors.background },
         }}
       />
     </UserStack.Navigator>
@@ -157,8 +161,9 @@ function AdminNavigator() {
       tabBarActiveTintColor: colors.tabActiveText,
       tabBarInactiveTintColor: colors.tabInactive,
       tabBarHideOnKeyboard: true,
+      sceneContainerStyle: { backgroundColor: colors.background },
       tabBarStyle: {
-        backgroundColor: 'transparent',
+        backgroundColor: colors.background,
         borderTopWidth: 0,
         elevation: 0,
         shadowOpacity: 0,
@@ -235,23 +240,24 @@ function AdminNavigator() {
 }
 
 export function RootNavigator() {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const profile = useAuthStore((state) => state.profile);
   const firebaseUser = useAuthStore((state) => state.firebaseUser);
 
   const navTheme = useMemo(
     () => ({
-      ...DefaultTheme,
+      ...(isDark ? DarkTheme : DefaultTheme),
       colors: {
-        ...DefaultTheme.colors,
+        ...(isDark ? DarkTheme.colors : DefaultTheme.colors),
         background: colors.background,
         primary: colors.primary,
-        card: colors.cardSolid,
+        card: colors.background,
         text: colors.text,
         border: colors.border,
+        notification: colors.occupied,
       },
     }),
-    [colors],
+    [colors, isDark],
   );
 
   return (
