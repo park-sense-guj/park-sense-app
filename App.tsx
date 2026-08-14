@@ -5,6 +5,8 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { BlobBackground } from './src/components/BlobBackground';
+import { ErrorBoundary } from './src/components/ErrorBoundary';
+import { OfflineBanner } from './src/components/OfflineBanner';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { configureGoogleSignIn } from './src/services/googleAuthService';
 import { useAuthStore } from './src/store/authStore';
@@ -51,6 +53,7 @@ function AppContent() {
           color: colors.textMuted,
         },
         spinner: { marginTop: 28 },
+        shell: { flex: 1 },
       }),
     [colors],
   );
@@ -78,7 +81,12 @@ function AppContent() {
           <ActivityIndicator color={colors.primary} style={themedStyles.spinner} />
         </View>
       ) : (
-        <RootNavigator />
+        <View style={themedStyles.shell}>
+          <OfflineBanner />
+          <ErrorBoundary>
+            <RootNavigator />
+          </ErrorBoundary>
+        </View>
       )}
     </>
   );

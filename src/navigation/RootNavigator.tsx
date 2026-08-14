@@ -136,7 +136,11 @@ function UserNavigator() {
       <UserStack.Screen
         name="Alerts"
         component={NotificationsScreen}
-        options={{ title: 'Alerts', headerBackTitle: 'Back' }}
+        options={{
+          title: 'Alerts',
+          headerBackTitle: 'Back',
+          headerLargeTitle: false,
+        }}
       />
     </UserStack.Navigator>
   );

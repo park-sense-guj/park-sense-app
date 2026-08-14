@@ -7,13 +7,23 @@ export function useParkingSlots() {
   const [slots, setSlots] = useState<ParkingSlot[]>([]);
   const [sensors, setSensors] = useState<Sensor[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const stopSlots = listenParkingSlots((next) => {
-      setSlots(next);
-      setLoading(false);
+    const stopSlots = listenParkingSlots(
+      (next) => {
+        setSlots(next);
+        setLoading(false);
+        setError(null);
+      },
+      (err) => {
+        setLoading(false);
+        setError(err.message || 'Could not load parking slots.');
+      },
+    );
+    const stopSensors = listenSensors(setSensors, (err) => {
+      setError(err.message || 'Could not load sensors.');
     });
-    const stopSensors = listenSensors(setSensors);
     return () => {
       stopSlots();
       stopSensors();
@@ -33,5 +43,5 @@ export function useParkingSlots() {
     };
   }, [slots, sensors]);
 
-  return { slots, sensors, loading, stats };
+  return { slots, sensors, loading, error, stats };
 }

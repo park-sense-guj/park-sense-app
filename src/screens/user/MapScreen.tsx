@@ -1,7 +1,7 @@
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -10,16 +10,18 @@ import { BrandHeader } from '../../components/BrandHeader';
 import { Button } from '../../components/Button';
 import { Screen } from '../../components/Screen';
 import { StatusBadge } from '../../components/StatusBadge';
-import { radius } from '../../config/theme';
 import { darkMapStyle, lightMapStyle } from '../../config/mapStyles';
+import { radius } from '../../config/theme';
 import { DEMO_LOT } from '../../data/demoLot';
+import { useNotifications } from '../../hooks/useNotifications';
+import { useParkingHistory } from '../../hooks/useParkingHistory';
 import { useParkingSlots } from '../../hooks/useParkingSlots';
+import { useUserLocation } from '../../hooks/useUserLocation';
 import type { UserStackParamList } from '../../navigation/types';
-import { updatePreferredLocation } from '../../services/authService';
-import { createNotification } from '../../services/notificationService';
+import { endParkingSession, findActiveSession } from '../../services/historyService';
+import { readableWatchError, stopWatchingLot, watchLot } from '../../services/watchService';
 import { useAuthStore } from '../../store/authStore';
 import { useTheme } from '../../theme/ThemeProvider';
-import { useNotifications } from '../../hooks/useNotifications';
 import type { ParkingSlot } from '../../types';
 
 export function MapScreen() {
@@ -29,23 +31,54 @@ export function MapScreen() {
   const fullName = useAuthStore((state) => state.profile?.fullName);
   const photoUrl = useAuthStore((state) => state.profile?.photoUrl);
   const userId = useAuthStore((state) => state.profile?.userId);
+  const preferredLocation = useAuthStore((state) => state.profile?.preferredLocation);
   const { unreadCount } = useNotifications(userId);
-  const { slots, stats, loading } = useParkingSlots();
-  const [selected, setSelected] = useState<ParkingSlot | null>(null);
+  const { slots, stats, loading, error } = useParkingSlots();
+  const { activeSession, items: historyItems } = useParkingHistory(userId);
+  const { denied: locationDenied } = useUserLocation();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [watching, setWatching] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
   const initials = initialsFromName(fullName);
   const lotName = slots[0]?.locationName ?? 'No lot yet';
   const firstLat = slots[0]?.latitude;
   const firstLng = slots[0]?.longitude;
+  const selected = useMemo(
+    () => slots.find((slot) => slot.slotId === selectedId) ?? null,
+    [slots, selectedId],
+  );
+  const mySessionOnSelected = selected
+    ? findActiveSession(historyItems, selected.slotId)
+    : undefined;
+  const watchingThisLot = Boolean(
+    selected && preferredLocation && preferredLocation === selected.locationName,
+  );
+  const openCount = stats.available;
 
   const styles = useMemo(
     () =>
       StyleSheet.create({
         top: { paddingHorizontal: 20, paddingBottom: 10 },
         greeting: { fontSize: 15, color: colors.textMuted },
-        name: { fontSize: 26, fontWeight: '800', color: colors.text, letterSpacing: -0.6, marginTop: 2 },
+        name: {
+          fontSize: 26,
+          fontWeight: '800',
+          color: colors.text,
+          letterSpacing: -0.6,
+          marginTop: 2,
+        },
+        tip: {
+          marginTop: 10,
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+          borderRadius: 14,
+          backgroundColor: colors.primarySoft,
+          borderWidth: 1,
+          borderColor: colors.glassBorder,
+        },
+        tipText: { color: colors.primaryDark, fontSize: 13, fontWeight: '600', lineHeight: 18 },
         mapWrap: {
           flex: 1,
           minHeight: 320,
@@ -89,7 +122,12 @@ export function MapScreen() {
           padding: 12,
         },
         mapBannerTitle: { fontWeight: '700', color: colors.text, textAlign: 'center' },
-        mapBannerText: { marginTop: 4, textAlign: 'center', color: colors.textMuted },
+        mapBannerText: {
+          marginTop: 4,
+          textAlign: 'center',
+          color: colors.textMuted,
+          lineHeight: 18,
+        },
         sheet: {
           position: 'absolute',
           left: 12,
@@ -108,9 +146,20 @@ export function MapScreen() {
           backgroundColor: colors.borderStrong,
           marginBottom: 12,
         },
-        sheetRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
+        sheetRow: {
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 12,
+        },
         sheetCopy: { flex: 1 },
         sheetHint: { marginTop: 10, color: colors.textMuted, lineHeight: 20 },
+        watchingNote: {
+          marginTop: 8,
+          color: colors.primaryDark,
+          fontWeight: '700',
+          fontSize: 13,
+        },
         actions: { flexDirection: 'row', gap: 10, marginTop: 14 },
         actionBtn: { flex: 1 },
         dismissHit: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
@@ -130,28 +179,137 @@ export function MapScreen() {
   );
 
   const selectSlot = useCallback((slot: ParkingSlot) => {
-    setSelected(slot);
+    setSelectedId(slot.slotId);
   }, []);
 
-  async function watchSlot(slot: ParkingSlot) {
+  async function onWatchLot(slot: ParkingSlot) {
+    if (!userId) {
+      return;
+    }
+    if (preferredLocation === slot.locationName) {
+      Alert.alert(
+        'Already watching',
+        `You’re already watching ${slot.locationName}. You’ll get an alert when any space opens there.`,
+      );
+      return;
+    }
+    setWatching(true);
+    try {
+      await watchLot(userId, slot.locationName, slot.slotId);
+      Alert.alert(
+        'Watching this lot',
+        `You’ll get an alert when a space opens at ${slot.locationName}. This applies to every pin in that lot.`,
+        [
+          { text: 'View alerts', onPress: () => navigation.navigate('Alerts') },
+          { text: 'OK', style: 'cancel' },
+        ],
+      );
+    } catch (error) {
+      Alert.alert('Could not save alert', readableWatchError(error));
+    } finally {
+      setWatching(false);
+    }
+  }
+
+  async function onStopWatching(slot: ParkingSlot) {
     if (!userId) {
       return;
     }
     setWatching(true);
     try {
-      await updatePreferredLocation(userId, slot.locationName);
-      await createNotification({
-        userId,
-        slotId: slot.slotId,
-        message: `We will notify you when a slot opens at ${slot.locationName}. Watching ${slot.slotNumber}.`,
-      });
-      Alert.alert('Watching this lot', `You'll get an alert when a space opens at ${slot.locationName}.`);
+      await stopWatchingLot(userId, slot.locationName);
+      Alert.alert('Stopped watching', `You won’t get alerts for ${slot.locationName} anymore.`);
     } catch (error) {
-      Alert.alert('Could not save alert', error instanceof Error ? error.message : 'Try again.');
+      Alert.alert('Could not stop watching', readableWatchError(error));
     } finally {
       setWatching(false);
     }
   }
+
+  function onLeaveSelected() {
+    if (!userId || !mySessionOnSelected) {
+      return;
+    }
+    Alert.alert('Leave this slot?', 'This frees the pin and ends your session in Activity.', [
+      { text: 'Stay parked', style: 'cancel' },
+      {
+        text: 'Leave slot',
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            setLeaving(true);
+            try {
+              await endParkingSession(userId, mySessionOnSelected.historyId);
+              setSelectedId(null);
+              Alert.alert('You’re free to go', 'The space is open again on the map.');
+            } catch (error) {
+              Alert.alert(
+                'Could not leave',
+                error instanceof Error ? error.message : 'Try again.',
+              );
+            } finally {
+              setLeaving(false);
+            }
+          })();
+        },
+      },
+    ]);
+  }
+
+  const tipText = (() => {
+    if (activeSession) {
+      return `You’re parked at ${activeSession.slotNumber}. Tap that pin to leave when you’re done.`;
+    }
+    if (locationDenied) {
+      return 'Location is off — you can still tap a green pin, then open Maps for directions.';
+    }
+    if (openCount > 0) {
+      return `Tap a green pin to park · ${openCount} open now`;
+    }
+    if (preferredLocation) {
+      return `No open spaces. You’re watching ${preferredLocation} for alerts.`;
+    }
+    return 'All spaces are taken. Tap a red pin and watch the lot for an alert.';
+  })();
+
+  const sheet = selected
+    ? (() => {
+        if (mySessionOnSelected) {
+          return {
+            hint: 'This is your active parking session. Leave when you go so the pin turns green again.',
+            primaryTitle: 'Leave slot',
+            primaryVariant: 'danger' as const,
+            primaryLoading: leaving,
+            onPrimary: onLeaveSelected,
+            secondaryTitle: 'Open session',
+            onSecondary: () => navigation.navigate('Navigate', { slot: selected }),
+          };
+        }
+        if (selected.status === 'Available') {
+          return {
+            hint: 'This space is free. Go there, then tap I’m parked when you arrive.',
+            primaryTitle: 'Go there',
+            primaryVariant: 'primary' as const,
+            primaryLoading: false,
+            onPrimary: () => navigation.navigate('Navigate', { slot: selected }),
+            secondaryTitle: 'Close',
+            onSecondary: () => setSelectedId(null),
+          };
+        }
+        return {
+          hint: watchingThisLot
+            ? `You’re watching ${selected.locationName}. Alerts cover every pin in this lot, not just ${selected.slotNumber}.`
+            : 'This space is taken. Watch the whole lot to get an alert when any space opens.',
+          primaryTitle: watchingThisLot ? 'Stop watching' : 'Watch lot',
+          primaryVariant: watchingThisLot ? ('danger' as const) : ('primary' as const),
+          primaryLoading: watching,
+          onPrimary: () =>
+            void (watchingThisLot ? onStopWatching(selected) : onWatchLot(selected)),
+          secondaryTitle: 'Close',
+          onSecondary: () => setSelectedId(null),
+        };
+      })()
+    : null;
 
   return (
     <Screen padded={false} overlayTabBar blobs={false}>
@@ -165,6 +323,11 @@ export function MapScreen() {
         />
         <Text style={styles.greeting}>{greeting}</Text>
         <Text style={styles.name}>{fullName ?? 'Driver'}</Text>
+        {!selected ? (
+          <View style={styles.tip}>
+            <Text style={styles.tipText}>{tipText}</Text>
+          </View>
+        ) : null}
       </View>
 
       <View style={styles.mapWrap}>
@@ -184,7 +347,7 @@ export function MapScreen() {
           >
             {slots.map((slot) => (
               <Marker
-                key={slot.slotId}
+                key={`${slot.slotId}-${slot.status}`}
                 coordinate={{ latitude: slot.latitude, longitude: slot.longitude }}
                 pinColor={slot.status === 'Available' ? colors.available : colors.occupied}
                 title={slot.slotNumber}
@@ -209,7 +372,17 @@ export function MapScreen() {
             </View>
           </View>
 
-          {!loading && slots.length === 0 ? (
+          {!loading && error ? (
+            <View style={styles.mapBanner}>
+              <Text style={styles.mapBannerTitle}>Couldn’t load live slots</Text>
+              <Text style={styles.mapBannerText}>
+                Check your connection, then reopen Home. If this continues, publish the latest
+                Firebase database rules.
+              </Text>
+            </View>
+          ) : null}
+
+          {!loading && !error && slots.length === 0 ? (
             <View style={styles.mapBanner}>
               <Text style={styles.mapBannerTitle}>No slots on the map yet</Text>
               <Text style={styles.mapBannerText}>Ask an admin to seed the demo lot.</Text>
@@ -218,7 +391,7 @@ export function MapScreen() {
         </View>
       </View>
 
-      {selected ? (
+      {selected && sheet ? (
         <View style={[styles.sheet, { bottom: Math.max(insets.bottom, 12) + 78 }]}>
           <View style={styles.handle} />
           <View style={styles.sheetRow}>
@@ -227,33 +400,28 @@ export function MapScreen() {
               <Text style={typography.caption}>{selected.locationName}</Text>
             </View>
             <StatusBadge
-              label={selected.status}
-              tone={selected.status === 'Available' ? 'available' : 'occupied'}
+              label={mySessionOnSelected ? 'Your spot' : selected.status}
+              tone={
+                mySessionOnSelected || selected.status === 'Available' ? 'available' : 'occupied'
+              }
             />
           </View>
-          <Text style={styles.sheetHint}>
-            {selected.status === 'Available'
-              ? 'This space is free. Navigate to start driving there.'
-              : 'This space is taken. Watch the lot to get an alert when it opens.'}
-          </Text>
+          <Text style={styles.sheetHint}>{sheet.hint}</Text>
           <View style={styles.actions}>
             <Button
-              title="Navigate"
-              disabled={selected.status !== 'Available'}
-              onPress={() => navigation.navigate('Navigate', { slot: selected })}
+              title={sheet.primaryTitle}
+              variant={sheet.primaryVariant}
+              loading={sheet.primaryLoading}
+              onPress={sheet.onPrimary}
               style={styles.actionBtn}
             />
             <Button
-              title="Notify me"
+              title={sheet.secondaryTitle}
               variant="secondary"
-              loading={watching}
-              onPress={() => void watchSlot(selected)}
+              onPress={sheet.onSecondary}
               style={styles.actionBtn}
             />
           </View>
-          <Pressable onPress={() => setSelected(null)} style={styles.dismissHit} accessibilityRole="button">
-            <Text style={styles.dismiss}>Close</Text>
-          </Pressable>
         </View>
       ) : null}
     </Screen>

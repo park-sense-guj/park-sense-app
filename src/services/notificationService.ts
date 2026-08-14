@@ -1,4 +1,4 @@
-import { onValue, push, ref, update } from 'firebase/database';
+import { onValue, push, ref, remove, update } from 'firebase/database';
 
 import { getFirebaseDatabase } from '../config/firebase';
 import type { AppNotification } from '../types';
@@ -6,18 +6,22 @@ import type { AppNotification } from '../types';
 export function listenNotifications(
   userId: string,
   onChange: (items: AppNotification[]) => void,
+  onError?: (error: Error) => void,
 ): () => void {
-  const notificationsRef = ref(getFirebaseDatabase(), 'notifications');
-  return onValue(notificationsRef, (snapshot) => {
-    const value = snapshot.val() as Record<string, Omit<AppNotification, 'notificationId'>> | null;
-    const items = value
-      ? Object.entries(value)
-          .map(([notificationId, item]) => ({ ...item, notificationId }))
-          .filter((item) => item.userId === userId)
-          .sort((a, b) => b.createdTime - a.createdTime)
-      : [];
-    onChange(items);
-  });
+  const notificationsRef = ref(getFirebaseDatabase(), `notifications/${userId}`);
+  return onValue(
+    notificationsRef,
+    (snapshot) => {
+      const value = snapshot.val() as Record<string, Omit<AppNotification, 'notificationId'>> | null;
+      const items = value
+        ? Object.entries(value)
+            .map(([notificationId, item]) => ({ ...item, notificationId }))
+            .sort((a, b) => b.createdTime - a.createdTime)
+        : [];
+      onChange(items);
+    },
+    (error) => onError?.(error),
+  );
 }
 
 export async function createNotification(input: {
@@ -32,11 +36,13 @@ export async function createNotification(input: {
     isRead: false,
     slotId: input.slotId,
   };
-  await push(ref(getFirebaseDatabase(), 'notifications'), payload);
+  await push(ref(getFirebaseDatabase(), `notifications/${input.userId}`), payload);
 }
 
-export async function markNotificationRead(notificationId: string): Promise<void> {
-  await update(ref(getFirebaseDatabase(), `notifications/${notificationId}`), { isRead: true });
+export async function markNotificationRead(userId: string, notificationId: string): Promise<void> {
+  await update(ref(getFirebaseDatabase(), `notifications/${userId}/${notificationId}`), {
+    isRead: true,
+  });
 }
 
 export async function notifyUsersSlotAvailable(params: {
@@ -54,4 +60,8 @@ export async function notifyUsersSlotAvailable(params: {
       }),
     ),
   );
+}
+
+export async function deleteUserNotifications(userId: string): Promise<void> {
+  await remove(ref(getFirebaseDatabase(), `notifications/${userId}`));
 }

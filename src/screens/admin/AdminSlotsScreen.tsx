@@ -1,4 +1,3 @@
-import { get, ref } from 'firebase/database';
 import { useMemo, useState } from 'react';
 import { Alert, FlatList, StyleSheet, Text, View } from 'react-native';
 
@@ -8,12 +7,12 @@ import { GlassCard } from '../../components/GlassCard';
 import { Screen } from '../../components/Screen';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { StatusBadge } from '../../components/StatusBadge';
-import { getFirebaseDatabase } from '../../config/firebase';
 import { useParkingSlots } from '../../hooks/useParkingSlots';
 import { notifyUsersSlotAvailable } from '../../services/notificationService';
 import { setSlotOccupancy } from '../../services/parkingService';
+import { listLotWatcherIds } from '../../services/watchService';
 import { useTheme } from '../../theme/ThemeProvider';
-import type { ParkingSlot, UserProfile } from '../../types';
+import type { ParkingSlot } from '../../types';
 
 export function AdminSlotsScreen() {
   const { colors, typography } = useTheme();
@@ -111,11 +110,7 @@ export function AdminSlotsScreen() {
 }
 
 async function notifyWatchers(slot: ParkingSlot) {
-  const snapshot = await get(ref(getFirebaseDatabase(), 'users'));
-  const users = (snapshot.val() as Record<string, UserProfile> | null) ?? {};
-  const watchers = Object.values(users)
-    .filter((user) => user.role === 'user' && user.preferredLocation === slot.locationName)
-    .map((user) => user.userId);
+  const watchers = await listLotWatcherIds(slot.locationName);
   if (watchers.length === 0) {
     return;
   }

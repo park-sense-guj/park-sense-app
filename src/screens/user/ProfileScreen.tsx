@@ -21,6 +21,7 @@ import { radius } from '../../config/theme';
 import type { ThemePreference } from '../../config/theme';
 import {
   confirmCurrentPassword,
+  deleteUserAccount,
   getSessionPassword,
   updateFullName,
   updateUserEmail,
@@ -69,9 +70,13 @@ export function ProfileScreen() {
   const [photoSheet, setPhotoSheet] = useState(false);
   const [accountSheet, setAccountSheet] = useState<AccountSheet>(null);
   const [passwordModal, setPasswordModal] = useState(false);
+  const [deleteModal, setDeleteModal] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState('');
   const [confirmError, setConfirmError] = useState('');
   const [confirmBusy, setConfirmBusy] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const initials = initialsFromName(profile?.fullName);
   const nameDirty = fullName.trim() !== (profile?.fullName ?? '');
   const emailDirty = email.trim().toLowerCase() !== (profile?.email ?? '');
@@ -257,6 +262,23 @@ export function ProfileScreen() {
         logoutCopy: { flex: 1 },
         logoutTitle: { fontSize: 16, fontWeight: '700', color: colors.occupied },
         logoutSubtitle: { marginTop: 2, fontSize: 13, color: colors.textMuted },
+        dangerCard: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 12,
+          paddingVertical: 4,
+        },
+        dangerIcon: {
+          width: 44,
+          height: 44,
+          borderRadius: 22,
+          backgroundColor: colors.occupiedSoft,
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+        dangerCopy: { flex: 1 },
+        dangerTitle: { fontSize: 16, fontWeight: '700', color: colors.occupied },
+        dangerSubtitle: { marginTop: 2, fontSize: 13, color: colors.textMuted, lineHeight: 18 },
       }),
     [colors],
   );
@@ -413,6 +435,46 @@ export function ProfileScreen() {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Log out', style: 'destructive', onPress: () => void signOut() },
     ]);
+  }
+
+  function openDeleteAccount() {
+    setDeleteError('');
+    setDeletePassword('');
+    if (isGoogleAccount) {
+      Alert.alert(
+        'Delete account?',
+        'This permanently removes your ParkSense profile, parking history, and alerts. You’ll confirm with Google next.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Continue',
+            style: 'destructive',
+            onPress: () => void runDeleteAccount(),
+          },
+        ],
+      );
+      return;
+    }
+    setDeleteModal(true);
+  }
+
+  async function runDeleteAccount(password?: string) {
+    setDeleteBusy(true);
+    setDeleteError('');
+    try {
+      await deleteUserAccount(isGoogleAccount ? undefined : { password });
+      setDeleteModal(false);
+      Alert.alert('Account deleted', 'Your ParkSense account has been removed.');
+    } catch (error) {
+      const message = readableProfileError(error);
+      if (isGoogleAccount) {
+        Alert.alert('Could not delete account', message);
+      } else {
+        setDeleteError(message);
+      }
+    } finally {
+      setDeleteBusy(false);
+    }
   }
 
   function choosePhoto() {
@@ -623,6 +685,27 @@ export function ProfileScreen() {
               <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
             </Pressable>
           </GlassCard>
+
+          <GlassCard>
+            <Pressable
+              onPress={openDeleteAccount}
+              accessibilityRole="button"
+              accessibilityLabel="Delete account"
+              disabled={deleteBusy}
+              style={styles.dangerCard}
+            >
+              <View style={styles.dangerIcon}>
+                <Ionicons name="trash-outline" size={20} color={colors.occupied} />
+              </View>
+              <View style={styles.dangerCopy}>
+                <Text style={styles.dangerTitle}>Delete account</Text>
+                <Text style={styles.dangerSubtitle}>
+                  Permanently remove your profile, history, and alerts
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            </Pressable>
+          </GlassCard>
         </ScrollView>
 
       <Modal
@@ -815,6 +898,77 @@ export function ProfileScreen() {
           </Pressable>
         </KeyboardAvoidingView>
       </Modal>
+
+      <Modal
+        visible={deleteModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          if (!deleteBusy) {
+            setDeleteModal(false);
+          }
+        }}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.flex}
+        >
+          <Pressable
+            style={styles.modalRoot}
+            onPress={() => {
+              if (!deleteBusy) {
+                setDeleteModal(false);
+              }
+            }}
+          >
+            <Pressable style={styles.modalCard} onPress={() => undefined}>
+              <Text style={styles.modalTitle}>Delete account</Text>
+              <Text style={styles.modalHint}>
+                This permanently removes your profile, parking history, and alerts. Enter your
+                password to confirm.
+              </Text>
+              <TextField
+                label="Current password"
+                value={deletePassword}
+                onChangeText={(value) => {
+                  setDeletePassword(value);
+                  if (deleteError) {
+                    setDeleteError('');
+                  }
+                }}
+                secureTextEntry
+                error={deleteError}
+                autoFocus
+                textContentType="password"
+                autoComplete="password"
+                returnKeyType="done"
+                onSubmitEditing={() => {
+                  if (deletePassword.length >= 6 && !deleteBusy) {
+                    void runDeleteAccount(deletePassword);
+                  }
+                }}
+              />
+              <View style={styles.modalActions}>
+                <Button
+                  title="Cancel"
+                  variant="secondary"
+                  disabled={deleteBusy}
+                  onPress={() => setDeleteModal(false)}
+                  style={styles.modalBtn}
+                />
+                <Button
+                  title="Delete"
+                  variant="danger"
+                  loading={deleteBusy}
+                  disabled={deletePassword.length < 6}
+                  onPress={() => void runDeleteAccount(deletePassword)}
+                  style={styles.modalBtn}
+                />
+              </View>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Modal>
     </Screen>
   );
 }
@@ -828,10 +982,13 @@ function readableProfileError(error: unknown): string {
     return 'That email is already used by another account.';
   }
   if (message.includes('requires-recent-login')) {
-    return 'Enter your current password, then try again.';
+    return 'Confirm your identity again, then try once more.';
   }
   if (message.includes('invalid-email')) {
     return 'Enter a valid email address.';
+  }
+  if (message.includes('cancelled')) {
+    return 'Confirmation was cancelled.';
   }
   return message;
 }

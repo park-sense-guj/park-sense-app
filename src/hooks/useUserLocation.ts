@@ -1,39 +1,40 @@
 import * as Location from 'expo-location';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import type { LatLng } from '../services/mapService';
 
 export function useUserLocation() {
   const [location, setLocation] = useState<LatLng | null>(null);
   const [denied, setDenied] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
       const permission = await Location.requestForegroundPermissionsAsync();
       if (permission.status !== 'granted') {
-        if (!cancelled) {
-          setDenied(true);
-        }
+        setDenied(true);
+        setLocation(null);
         return;
       }
+      setDenied(false);
       const current = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
-      if (!cancelled) {
-        setLocation({
-          latitude: current.coords.latitude,
-          longitude: current.coords.longitude,
-        });
-      }
+      setLocation({
+        latitude: current.coords.latitude,
+        longitude: current.coords.longitude,
+      });
+    } catch {
+      setLocation(null);
+    } finally {
+      setLoading(false);
     }
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
-  return { location, denied };
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  return { location, denied, loading, refresh };
 }

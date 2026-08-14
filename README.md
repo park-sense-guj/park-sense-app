@@ -83,4 +83,23 @@ pnpm ios
 
 Do not commit `.env`, `google-services.json`, `GoogleService-Info.plist`, keystores, or the Google OAuth **client secret**. Mobile Firebase API keys are client identifiers — restrict them in Google Cloud / Firebase.
 
-The OAuth client secret is a **server** credential and is not used by this app (email/password only).
+Paste `database.rules.json` into **Realtime Database → Rules → Publish** before testing with real accounts. The rules:
+
+- Let signed-in drivers update parking slot status (software occupancy until hardware/ESP32 is connected)
+- Let only **admins** write sensors
+- Nest history and notifications under each `userId`
+- Store lot watchers under `lotWatchers` so freeing a space can notify drivers without scanning all users
+- Prevent drivers from promoting themselves to admin (admin role is only valid for `admin@parksense.app` on create)
+
+**Software-only parking loop (no hardware):**
+
+1. Tap a **green** pin → **Go there** → **I’m parked** (pin turns red, open/taken updates)
+2. Leave Navigate and come back — session stays **Parked ✓** until you leave
+3. **Leave slot** (or Activity → End session) — pin turns green again
+4. Tap a **red** pin → **Watch lot** — get an alert when that lot frees a space
+
+If you change `EXPO_PUBLIC_ADMIN_EMAIL`, update the admin email string inside `database.rules.json` to match.
+
+Password reset and account deletion are available in the app (Login → Forgot password; Profile → Delete account).
+
+The OAuth client secret is a **server** credential and is not used by this app.

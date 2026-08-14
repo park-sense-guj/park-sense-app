@@ -1,19 +1,24 @@
 import {
   createUserWithEmailAndPassword,
+  deleteUser,
   EmailAuthProvider,
   reauthenticateWithCredential,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
   updateEmail,
   updateProfile,
   verifyBeforeUpdateEmail,
 } from 'firebase/auth';
-import { get, onValue, ref, set, update } from 'firebase/database';
+import { get, onValue, ref, remove, set, update } from 'firebase/database';
 
 import { env } from '../config/env';
 import { getFirebaseAuth, getFirebaseDatabase } from '../config/firebase';
 import type { UserProfile, UserRole } from '../types';
-import { signOutGoogle } from './googleAuthService';
+import { disableBiometrics } from './biometricService';
+import { reauthenticateWithGoogle, signOutGoogle } from './googleAuthService';
+import { deleteUserParkingHistory } from './historyService';
+import { deleteUserNotifications } from './notificationService';
 
 function roleForEmail(email: string): UserRole {
   return email.trim().toLowerCase() === env.adminEmail ? 'admin' : 'user';
@@ -50,9 +55,47 @@ export async function loginUser(email: string, password: string) {
   return signInWithEmailAndPassword(getFirebaseAuth(), email.trim(), password);
 }
 
+export async function sendPasswordReset(email: string): Promise<void> {
+  const trimmed = email.trim().toLowerCase();
+  if (!trimmed.includes('@') || !trimmed.includes('.')) {
+    throw new Error('Enter a valid email address.');
+  }
+  await sendPasswordResetEmail(getFirebaseAuth(), trimmed);
+}
+
 export async function logoutUser() {
   await signOutGoogle();
   await firebaseSignOut(getFirebaseAuth());
+}
+
+export async function deleteUserAccount(options?: { password?: string }): Promise<void> {
+  const user = getFirebaseAuth().currentUser;
+  if (!user?.email || !user.uid) {
+    throw new Error('You need to be signed in.');
+  }
+
+  const isGoogle = user.providerData.some((provider) => provider.providerId === 'google.com');
+  if (isGoogle) {
+    await reauthenticateWithGoogle();
+  } else {
+    const password = options?.password ?? '';
+    if (password.length < 6) {
+      throw new Error('Enter your current password to delete this account.');
+    }
+    const credential = EmailAuthProvider.credential(user.email, password);
+    await reauthenticateWithCredential(user, credential);
+  }
+
+  const userId = user.uid;
+  await Promise.all([
+    deleteUserParkingHistory(userId),
+    deleteUserNotifications(userId),
+    remove(ref(getFirebaseDatabase(), `users/${userId}`)),
+  ]);
+  await disableBiometrics();
+  clearSessionPassword();
+  await deleteUser(user);
+  await signOutGoogle();
 }
 
 export function listenUserProfile(

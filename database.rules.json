@@ -1,24 +1,60 @@
 {
   "rules": {
+    ".read": false,
+    ".write": false,
+
     "users": {
-      ".read": "auth != null",
+      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
       "$uid": {
-        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')"
+        ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        ".validate": "newData.hasChildren(['userId', 'fullName', 'email', 'role', 'registeredOn']) && newData.child('userId').val() === $uid",
+        "role": {
+          ".validate": "newData.isString() && ((!data.exists() && (newData.val() === 'user' || (newData.val() === 'admin' && newData.parent().child('email').val() === 'admin@parksense.app'))) || (data.exists() && newData.val() === data.val()) || root.child('users').child(auth.uid).child('role').val() === 'admin')"
+        },
+        "email": {
+          ".validate": "newData.isString() && newData.val().length > 3"
+        },
+        "fullName": {
+          ".validate": "newData.isString() && newData.val().length > 0"
+        },
+        "preferredLocation": {
+          ".validate": "newData.isString() || !newData.exists()"
+        }
       }
     },
+
     "parkingSlots": {
       ".read": "auth != null",
       ".write": "auth != null"
     },
+
     "sensors": {
       ".read": "auth != null",
-      ".write": "auth != null"
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
     },
+
     "parkingHistory": {
-      ".read": "auth != null",
-      ".write": "auth != null"
+      "$userId": {
+        ".read": "auth != null && (auth.uid === $userId || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        ".write": "auth != null && (auth.uid === $userId || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        "$historyId": {
+          ".validate": "newData.hasChildren(['userId', 'slotId', 'slotNumber', 'locationName', 'entryTime', 'bookingDate']) && newData.child('userId').val() === $userId"
+        }
+      }
     },
+
     "notifications": {
+      "$userId": {
+        ".read": "auth != null && (auth.uid === $userId || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        ".write": "auth != null && (auth.uid === $userId || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        "$notificationId": {
+          ".validate": "newData.hasChildren(['userId', 'message', 'createdTime', 'isRead']) && newData.child('userId').val() === $userId"
+        }
+      }
+    },
+
+    "lotWatchers": {
       ".read": "auth != null",
       ".write": "auth != null"
     }

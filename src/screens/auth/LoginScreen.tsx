@@ -1,6 +1,6 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import {
   AuthDivider,
@@ -12,7 +12,7 @@ import {
 import { Button } from '../../components/Button';
 import { TextField } from '../../components/TextField';
 import type { AuthStackParamList } from '../../navigation/types';
-import { loginUser, setSessionPassword } from '../../services/authService';
+import { loginUser, sendPasswordReset, setSessionPassword } from '../../services/authService';
 import {
   authenticateWithBiometrics,
   enableBiometrics,
@@ -39,6 +39,7 @@ export function LoginScreen({ navigation }: Props) {
   const [formError, setFormError] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
   const [biometricLabel, setBiometricLabel] = useState<string | null>(null);
   const googleReady = isGoogleSignInConfigured();
 
@@ -53,6 +54,8 @@ export function LoginScreen({ navigation }: Props) {
           marginBottom: 12,
         },
         error: { color: colors.occupied, fontWeight: '600', fontSize: 13, lineHeight: 18 },
+        forgotRow: { alignItems: 'flex-end', marginTop: -4, marginBottom: 10 },
+        forgot: { color: colors.primaryDark, fontWeight: '700', fontSize: 13 },
         primaryGap: { marginTop: 4 },
       }),
     [colors],
@@ -118,6 +121,27 @@ export function LoginScreen({ navigation }: Props) {
     await submitWithPassword(stored.email, stored.password);
   }
 
+  async function onForgotPassword() {
+    setFormError('');
+    const nextEmailError = email.includes('@') ? '' : 'Enter your email above to reset your password.';
+    setEmailError(nextEmailError);
+    if (nextEmailError) {
+      return;
+    }
+    setResetLoading(true);
+    try {
+      await sendPasswordReset(email);
+      Alert.alert(
+        'Check your email',
+        `If an account exists for ${email.trim().toLowerCase()}, we sent a password reset link.`,
+      );
+    } catch (err) {
+      setFormError(err instanceof Error ? readableAuthError(err.message) : 'Could not send reset email.');
+    } finally {
+      setResetLoading(false);
+    }
+  }
+
   return (
     <AuthShell
       variant="login"
@@ -157,6 +181,16 @@ export function LoginScreen({ navigation }: Props) {
         placeholder="Your password"
         error={passwordError}
       />
+      <View style={styles.forgotRow}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Forgot password"
+          disabled={resetLoading || loading || googleLoading}
+          onPress={() => void onForgotPassword()}
+        >
+          <Text style={styles.forgot}>{resetLoading ? 'Sending…' : 'Forgot password?'}</Text>
+        </Pressable>
+      </View>
       {formError ? (
         <View style={styles.errorBox}>
           <Text style={styles.error}>{formError}</Text>
@@ -166,7 +200,7 @@ export function LoginScreen({ navigation }: Props) {
         title="Log in"
         onPress={() => void submitWithPassword(email, password)}
         loading={loading}
-        disabled={googleLoading}
+        disabled={googleLoading || resetLoading}
         style={styles.primaryGap}
       />
 

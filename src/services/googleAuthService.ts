@@ -1,4 +1,4 @@
-import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
+import { GoogleAuthProvider, reauthenticateWithCredential, signInWithCredential } from 'firebase/auth';
 
 import { env } from '../config/env';
 import { getFirebaseAuth } from '../config/firebase';
@@ -66,6 +66,41 @@ export async function signInWithGoogle(): Promise<'success' | 'cancelled'> {
   const credential = GoogleAuthProvider.credential(idToken);
   await signInWithCredential(getFirebaseAuth(), credential);
   return 'success';
+}
+
+export async function reauthenticateWithGoogle(): Promise<void> {
+  if (!env.googleWebClientId) {
+    throw new Error('Google Sign-In is not configured.');
+  }
+
+  let GoogleSignin: GoogleSignInModule['GoogleSignin'];
+  let isSuccessResponse: GoogleSignInModule['isSuccessResponse'];
+  try {
+    const mod = getGoogleSignIn();
+    GoogleSignin = mod.GoogleSignin;
+    isSuccessResponse = mod.isSuccessResponse;
+  } catch {
+    throw new Error(
+      'Google Sign-In needs a native rebuild. Run expo run:ios or expo run:android, then try again.',
+    );
+  }
+
+  configureGoogleSignIn();
+  await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+  const response = await GoogleSignin.signIn();
+  if (!isSuccessResponse(response)) {
+    throw new Error('Google confirmation was cancelled.');
+  }
+  const idToken = response.data.idToken;
+  if (!idToken) {
+    throw new Error('Google did not return an ID token.');
+  }
+  const credential = GoogleAuthProvider.credential(idToken);
+  const user = getFirebaseAuth().currentUser;
+  if (!user) {
+    throw new Error('You need to be signed in.');
+  }
+  await reauthenticateWithCredential(user, credential);
 }
 
 export async function signOutGoogle(): Promise<void> {
