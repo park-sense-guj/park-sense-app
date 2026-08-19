@@ -11,6 +11,7 @@ declare namespace NodeJS {
     EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_KEY?: string;
     EXPO_PUBLIC_GOOGLE_MAPS_IOS_KEY?: string;
     EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?: string;
+    EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?: string;
     EXPO_PUBLIC_ADMIN_EMAIL?: string;
   }
 }

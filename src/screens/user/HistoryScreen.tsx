@@ -1,7 +1,7 @@
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useMemo } from 'react';
+import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
 
 import { initialsFromName } from '../../components/Avatar';
 import { BrandHeader } from '../../components/BrandHeader';
@@ -11,10 +11,8 @@ import { StatusBadge } from '../../components/StatusBadge';
 import { useNotifications } from '../../hooks/useNotifications';
 import { useParkingHistory } from '../../hooks/useParkingHistory';
 import type { UserStackParamList, UserTabParamList } from '../../navigation/types';
-import { endParkingSession } from '../../services/historyService';
 import { useAuthStore } from '../../store/authStore';
 import { useTheme } from '../../theme/ThemeProvider';
-import type { ParkingHistory } from '../../types';
 
 type TabNav = {
   navigate: (screen: keyof UserTabParamList) => void;
@@ -27,7 +25,6 @@ export function HistoryScreen() {
   const profile = useAuthStore((state) => state.profile);
   const { unreadCount } = useNotifications(profile?.userId);
   const { items, ready, error } = useParkingHistory(profile?.userId);
-  const [endingId, setEndingId] = useState<string | null>(null);
   const initials = initialsFromName(profile?.fullName);
   const activeCount = items.filter((item) => !item.exitTime).length;
 
@@ -47,53 +44,12 @@ export function HistoryScreen() {
         body: { fontSize: 17, fontWeight: '700', color: colors.text },
         time: { color: colors.textMuted, fontSize: 13, lineHeight: 18 },
         duration: { color: colors.primaryDark, fontSize: 13, fontWeight: '700' },
-        endBtn: {
-          alignSelf: 'flex-start',
-          marginTop: 4,
-          paddingVertical: 8,
-          paddingHorizontal: 12,
-          borderRadius: 12,
-          backgroundColor: colors.occupiedSoft,
-        },
-        endBtnText: { color: colors.occupied, fontWeight: '800', fontSize: 13 },
         divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
         loading: { paddingTop: 48, alignItems: 'center', gap: 12 },
         loadingText: { color: colors.textMuted, fontWeight: '600' },
       }),
     [colors],
   );
-
-  function confirmEnd(item: ParkingHistory) {
-    if (!profile) {
-      return;
-    }
-    Alert.alert(
-      'End this session?',
-      `${item.slotNumber} will be freed on the map and marked completed.`,
-      [
-        { text: 'Keep parking', style: 'cancel' },
-        {
-          text: 'End session',
-          style: 'destructive',
-          onPress: () => {
-            void (async () => {
-              setEndingId(item.historyId);
-              try {
-                await endParkingSession(profile.userId, item.historyId);
-              } catch (err) {
-                Alert.alert(
-                  'Could not end session',
-                  err instanceof Error ? err.message : 'Try again.',
-                );
-              } finally {
-                setEndingId(null);
-              }
-            })();
-          },
-        },
-      ],
-    );
-  }
 
   return (
     <Screen>
@@ -107,8 +63,8 @@ export function HistoryScreen() {
       <Text style={styles.title}>Activity</Text>
       <Text style={styles.subtitle}>
         {activeCount > 0
-          ? `${activeCount} session in progress. End it here or on the map when you leave.`
-          : 'Your parking visits — green pin → Go there → I’m parked → Leave slot.'}
+          ? `${activeCount} session in progress. It ends when that bay’s IR sensor opens.`
+          : 'Visits start when you cover the IR sensor at a bay, and end when you uncover it.'}
       </Text>
       {!ready ? (
         <View style={styles.loading}>
@@ -135,7 +91,7 @@ export function HistoryScreen() {
               <EmptyState
                 icon="time-outline"
                 title="No sessions yet"
-                subtitle="Open Home, tap a green pin, go there, then tap I’m parked."
+                subtitle="Open Home, stand at a green pin, and cover the IR sensor."
                 actionLabel="Find a space"
                 onAction={() => tabNavigation.navigate('MapTab')}
               />
@@ -161,21 +117,8 @@ export function HistoryScreen() {
                 <Text style={styles.duration}>
                   {item.exitTime
                     ? formatDuration(item.entryTime, item.exitTime)
-                    : 'Duration updates when you leave'}
+                    : 'Duration updates when the bay opens'}
                 </Text>
-                {active ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="End parking session"
-                    disabled={endingId === item.historyId}
-                    onPress={() => confirmEnd(item)}
-                    style={styles.endBtn}
-                  >
-                    <Text style={styles.endBtnText}>
-                      {endingId === item.historyId ? 'Ending…' : 'End session'}
-                    </Text>
-                  </Pressable>
-                ) : null}
               </View>
             );
           }}

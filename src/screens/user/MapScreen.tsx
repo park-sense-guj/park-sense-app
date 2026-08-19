@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useCallback, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import MapView, { PROVIDER_DEFAULT } from 'react-native-maps';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import MapView, { PROVIDER_DEFAULT, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { initialsFromName } from '../../components/Avatar';
@@ -19,8 +19,9 @@ import { useNotifications } from '../../hooks/useNotifications';
 import { useParkingHistory } from '../../hooks/useParkingHistory';
 import { useParkingSlots } from '../../hooks/useParkingSlots';
 import type { UserStackParamList, UserTabParamList } from '../../navigation/types';
-import { endParkingSession, findActiveSession } from '../../services/historyService';
+import { findActiveSession } from '../../services/historyService';
 import { playErrorFeedback, playSuccessFeedback } from '../../services/feedbackService';
+import { bayKind, holdBay, releaseHold } from '../../services/parkingHoldService';
 import { readableNetworkError } from '../../services/networkService';
 import { readableWatchError, stopWatchingLot, watchLot } from '../../services/watchService';
 import { useAuthStore } from '../../store/authStore';
@@ -43,20 +44,21 @@ export function MapScreen() {
   const userId = useAuthStore((state) => state.profile?.userId);
   const preferredLocation = useAuthStore((state) => state.profile?.preferredLocation);
   const { unreadCount } = useNotifications(userId);
-  const { slots, onlineSlots, stats, loading, error } = useParkingSlots();
+  const { slots, stats, loading, error, now, isSensorFaulty } = useParkingSlots();
   const { items: historyItems } = useParkingHistory(userId);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [watching, setWatching] = useState(false);
-  const [leaving, setLeaving] = useState(false);
+  const [holding, setHolding] = useState(false);
+  const [releasingHold, setReleasingHold] = useState(false);
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
   const initials = initialsFromName(fullName);
   const lotName = slots[0]?.locationName ?? 'No lot yet';
-  const firstLat = onlineSlots[0]?.latitude ?? slots[0]?.latitude;
-  const firstLng = onlineSlots[0]?.longitude ?? slots[0]?.longitude;
+  const firstLat = slots[0]?.latitude;
+  const firstLng = slots[0]?.longitude;
   const selected = useMemo(
-    () => onlineSlots.find((slot) => slot.slotId === selectedId) ?? null,
-    [onlineSlots, selectedId],
+    () => slots.find((slot) => slot.slotId === selectedId) ?? null,
+    [slots, selectedId],
   );
   const mySessionOnSelected = selected
     ? findActiveSession(historyItems, selected.slotId)
@@ -64,12 +66,24 @@ export function MapScreen() {
   const watchingThisLot = Boolean(
     selected && preferredLocation && preferredLocation === selected.locationName,
   );
+  const selectedKind = selected
+    ? bayKind(selected, {
+        userId,
+        offline: isSensorFaulty(selected.slotId),
+        sessionOnSlot: Boolean(mySessionOnSelected),
+      }, now)
+    : 'open';
   const offlineCount = stats.offlineSensors;
 
   const styles = useMemo(
     () =>
       StyleSheet.create({
-        top: { paddingHorizontal: 20, paddingBottom: 10 },
+        top: {
+          paddingHorizontal: 20,
+          paddingTop: insets.top + 8,
+          paddingBottom: 10,
+          backgroundColor: colors.background,
+        },
         greeting: { fontSize: 15, color: colors.textMuted },
         name: {
           fontSize: 26,
@@ -81,17 +95,22 @@ export function MapScreen() {
         mapWrap: {
           flex: 1,
           minHeight: 320,
-          marginHorizontal: 12,
-          marginBottom: 16,
-          borderRadius: radius.xl,
+          marginHorizontal: Platform.OS === 'android' ? 0 : 12,
+          marginBottom: Platform.OS === 'android' ? 0 : 16,
         },
         mapCard: {
           flex: 1,
-          borderRadius: radius.xl,
-          overflow: 'hidden',
-          borderWidth: 1,
+          borderRadius: Platform.OS === 'android' ? 0 : radius.xl,
+          overflow: Platform.OS === 'android' ? 'visible' : 'hidden',
+          borderWidth: Platform.OS === 'android' ? 0 : 1,
           borderColor: colors.border,
-          backgroundColor: colors.mapSurface,
+          // Opaque fill covers Android's SurfaceView map (logo still shows).
+          backgroundColor: Platform.OS === 'android' ? 'transparent' : colors.mapSurface,
+        },
+        mapCanvas: {
+          ...StyleSheet.absoluteFillObject,
+          width: '100%',
+          height: '100%',
         },
         chip: {
           position: 'absolute',
@@ -202,8 +221,11 @@ export function MapScreen() {
         actions: { flexDirection: 'row', gap: 8, marginTop: 12 },
         actionBtn: { flex: 1, minHeight: 46 },
       }),
-    [colors],
+    [colors, insets.top],
   );
+
+  const mapRef = useRef<MapView | null>(null);
+  const lastRegionKey = useRef('');
 
   const region = useMemo(
     () => ({
@@ -214,6 +236,18 @@ export function MapScreen() {
     }),
     [firstLat, firstLng],
   );
+
+  useEffect(() => {
+    if (firstLat == null || firstLng == null) {
+      return;
+    }
+    const key = `${firstLat.toFixed(5)},${firstLng.toFixed(5)}`;
+    if (key === lastRegionKey.current) {
+      return;
+    }
+    lastRegionKey.current = key;
+    mapRef.current?.animateToRegion(region, 700);
+  }, [firstLat, firstLng, region]);
 
   const selectGuardUntil = useRef(0);
 
@@ -288,67 +322,133 @@ export function MapScreen() {
     }
   }
 
-  function onLeaveSelected() {
-    if (!userId || !mySessionOnSelected) {
+  async function onGoThere(slot: ParkingSlot) {
+    if (!userId || !fullName) {
       return;
     }
     if (!isOnline) {
       playErrorFeedback();
-      Alert.alert('You’re offline', 'Reconnect to free this space on the live map.');
+      Alert.alert('You’re offline', 'Reconnect to hold this bay and start navigation.');
       return;
     }
-    Alert.alert('Leave this slot?', 'This frees the pin and ends your session in Activity.', [
-      { text: 'Stay parked', style: 'cancel' },
-      {
-        text: 'Leave slot',
-        style: 'destructive',
-        onPress: () => {
-          void (async () => {
-            setLeaving(true);
-            try {
-              await endParkingSession(userId, mySessionOnSelected.historyId);
-              setSelectedId(null);
-              playSuccessFeedback();
-              Alert.alert('You’re free to go', 'The space is open again on the map.');
-            } catch (error) {
-              playErrorFeedback();
-              Alert.alert(
-                'Could not leave',
-                readableNetworkError(error, 'Try again when your connection is stable.'),
-              );
-            } finally {
-              setLeaving(false);
-            }
-          })();
+    setHolding(true);
+    try {
+      await holdBay(userId, fullName, slot.slotId);
+      playSuccessFeedback();
+      navigation.navigate('Navigate', { slot });
+    } catch (error) {
+      playErrorFeedback();
+      Alert.alert('Could not hold this bay', readableNetworkError(error, 'Pick another open pin.'));
+    } finally {
+      setHolding(false);
+    }
+  }
+
+  async function onReleaseHold(slot: ParkingSlot) {
+    if (!userId) {
+      return;
+    }
+    if (!isOnline) {
+      playErrorFeedback();
+      Alert.alert('You’re offline', 'Reconnect to end this hold.');
+      return;
+    }
+
+    Alert.alert(
+      'End this hold?',
+      `This will release ${slot.slotNumber} so other drivers can take it.`,
+      [
+        { text: 'Keep hold', style: 'cancel' },
+        {
+          text: 'End hold',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              setReleasingHold(true);
+              try {
+                await releaseHold(userId, slot.slotId);
+                playSuccessFeedback();
+                setSelectedId(null);
+                Alert.alert('Hold ended', `${slot.slotNumber} is no longer reserved for you.`);
+              } catch (error) {
+                playErrorFeedback();
+                Alert.alert(
+                  'Could not end hold',
+                  readableNetworkError(error, 'Try again in a moment.'),
+                );
+              } finally {
+                setReleasingHold(false);
+              }
+            })();
+          },
         },
-      },
-    ]);
+      ],
+    );
   }
 
   const sheet = selected
     ? (() => {
-        if (mySessionOnSelected) {
+        if (selectedKind === 'mine') {
           return {
-            hint: isOnline
-              ? 'This is your active parking session. Leave when you go so the pin turns green again.'
-              : 'You’re offline. Reconnect to leave this slot on the live map.',
-            primaryTitle: 'Leave slot',
-            primaryVariant: 'danger' as const,
-            primaryLoading: leaving,
-            primaryDisabled: !isOnline,
-            onPrimary: onLeaveSelected,
-            secondaryTitle: 'Open session',
-            onSecondary: () => navigation.navigate('Navigate', { slot: selected }),
-          };
-        }
-        if (selected.status === 'Available') {
-          return {
-            hint: 'This space is free. Go there, then tap I’m parked when you arrive.',
-            primaryTitle: 'Go there',
+            hint: 'You’re parked here. The session ends by itself when the IR sensor opens.',
+            primaryTitle: 'Open session',
             primaryVariant: 'primary' as const,
             primaryLoading: false,
             primaryDisabled: false,
             onPrimary: () => navigation.navigate('Navigate', { slot: selected }),
+            secondaryTitle: 'Close',
+            onSecondary: () => setSelectedId(null),
+          };
+        }
+        if (selectedKind === 'heldMine') {
+          return {
+            hint: 'This bay is held for you. Drive there, then cover the IR sensor to start your session.',
+            primaryTitle: 'Continue',
+            primaryVariant: 'primary' as const,
+            primaryLoading: false,
+            primaryDisabled: releasingHold,
+            onPrimary: () => navigation.navigate('Navigate', { slot: selected }),
+            secondaryTitle: 'End hold',
+            secondaryVariant: 'danger' as const,
+            secondaryLoading: releasingHold,
+            secondaryDisabled: !isOnline,
+            onSecondary: () => void onReleaseHold(selected),
+          };
+        }
+        if (selectedKind === 'open') {
+          return {
+            hint: 'This space is free. Go there to hold it, then cover the IR sensor to start your session.',
+            primaryTitle: 'Go there',
+            primaryVariant: 'primary' as const,
+            primaryLoading: holding,
+            primaryDisabled: !isOnline || holding,
+            onPrimary: () => void onGoThere(selected),
+            secondaryTitle: 'Close',
+            onSecondary: () => setSelectedId(null),
+          };
+        }
+        if (selectedKind === 'offline') {
+          return {
+            hint: 'This sensor is not reaching Firebase. Pins stay on the map; pick another bay if you need to park now.',
+            primaryTitle: watchingThisLot ? 'Stop watching' : 'Watch lot',
+            primaryVariant: watchingThisLot ? ('danger' as const) : ('primary' as const),
+            primaryLoading: watching,
+            primaryDisabled: !isOnline,
+            onPrimary: () =>
+              void (watchingThisLot ? onStopWatching(selected) : onWatchLot(selected)),
+            secondaryTitle: 'Close',
+            onSecondary: () => setSelectedId(null),
+          };
+        }
+        if (selectedKind === 'held') {
+          return {
+            hint: `${selected.heldByName || 'Another driver'} is heading here. Watch the lot for a free space.`,
+            primaryTitle: watchingThisLot ? 'Stop watching' : 'Watch lot',
+            primaryVariant: watchingThisLot ? ('danger' as const) : ('primary' as const),
+            primaryLoading: watching,
+            primaryDisabled: !isOnline,
+            onPrimary: () =>
+              void (watchingThisLot ? onStopWatching(selected) : onWatchLot(selected)),
             secondaryTitle: 'Close',
             onSecondary: () => setSelectedId(null),
           };
@@ -372,7 +472,7 @@ export function MapScreen() {
     : null;
 
   return (
-    <Screen padded={false} overlayTabBar>
+    <Screen padded={false} overlayTabBar blobs={false} mapSafe>
       <View style={styles.top}>
         <BrandHeader
           initials={initials}
@@ -389,9 +489,13 @@ export function MapScreen() {
       <View style={styles.mapWrap}>
         <View style={styles.mapCard} collapsable={false}>
           <MapView
-            style={StyleSheet.absoluteFill}
-            provider={PROVIDER_DEFAULT}
+            ref={mapRef}
+            style={styles.mapCanvas}
+            provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : PROVIDER_DEFAULT}
             initialRegion={region}
+            loadingEnabled
+            loadingIndicatorColor={colors.primary}
+            loadingBackgroundColor={colors.mapSurface}
             showsUserLocation
             userInterfaceStyle={isDark ? 'dark' : 'light'}
             customMapStyle={isDark ? darkMapStyle : lightMapStyle}
@@ -400,17 +504,28 @@ export function MapScreen() {
             moveOnMarkerPress={false}
             rotateEnabled={false}
             pitchEnabled={false}
+            onMapReady={() => {
+              mapRef.current?.animateToRegion(region, 1);
+            }}
             onPress={dismissSelection}
             onPoiClick={dismissSelection}
           >
-            {onlineSlots.map((slot) => {
-              const mine = Boolean(findActiveSession(historyItems, slot.slotId));
+            {slots.map((slot) => {
+              const kind = bayKind(
+                slot,
+                {
+                  userId,
+                  offline: isSensorFaulty(slot.slotId),
+                  sessionOnSlot: Boolean(findActiveSession(historyItems, slot.slotId)),
+                },
+                now,
+              );
               return (
                 <ParkingMarker
                   key={slot.slotId}
                   slot={slot}
                   selected={selectedId === slot.slotId}
-                  isMine={mine}
+                  kind={kind}
                   onPress={() => selectSlot(slot)}
                 />
               );
@@ -423,10 +538,13 @@ export function MapScreen() {
             </Text>
             <View style={styles.chipRow}>
               <StatusBadge
-                label={loading ? 'Updating…' : `${stats.onlineAvailable} open`}
+                label={loading ? 'Updating…' : `${stats.openForDrivers} open`}
                 tone="available"
               />
               <StatusBadge label={`${stats.onlineOccupied} taken`} tone="occupied" />
+              {stats.held > 0 ? (
+                <StatusBadge label={`${stats.held} held`} tone="info" />
+              ) : null}
               {offlineCount > 0 ? (
                 <StatusBadge label={`${offlineCount} offline`} tone="warning" />
               ) : null}
@@ -443,11 +561,12 @@ export function MapScreen() {
             </View>
           ) : null}
 
-          {!loading && !error && onlineSlots.length === 0 && slots.length > 0 ? (
+          {!loading && !error && stats.offlineSensors === stats.total && slots.length > 0 ? (
             <View style={styles.mapBanner}>
               <Text style={styles.mapBannerTitle}>All sensors offline</Text>
               <Text style={styles.mapBannerText}>
-                Parking pins are hidden until an admin marks sensors healthy again.
+                Pins stay on the map as Offline. Keep Personal Hotspot on (2.4 GHz, Maximize
+                Compatibility), power the three boards, then wait about a minute.
               </Text>
             </View>
           ) : null}
@@ -455,7 +574,7 @@ export function MapScreen() {
           {!loading && !error && slots.length === 0 ? (
             <View style={styles.mapBanner}>
               <Text style={styles.mapBannerTitle}>No slots on the map yet</Text>
-              <Text style={styles.mapBannerText}>Ask an admin to seed the demo lot.</Text>
+              <Text style={styles.mapBannerText}>Ask an admin to seed the live lot.</Text>
             </View>
           ) : null}
         </View>
@@ -469,29 +588,36 @@ export function MapScreen() {
               style={[
                 styles.statusOrb,
                 {
-                  backgroundColor: mySessionOnSelected
-                    ? colors.primarySoft
-                    : selected.status === 'Available'
-                      ? colors.availableSoft
-                      : colors.occupiedSoft,
+                  backgroundColor:
+                    selectedKind === 'mine' || selectedKind === 'heldMine'
+                      ? colors.primarySoft
+                      : selectedKind === 'open'
+                        ? colors.availableSoft
+                        : selectedKind === 'taken'
+                          ? colors.occupiedSoft
+                          : colors.warningSoft,
                 },
               ]}
             >
               <Ionicons
                 name={
-                  mySessionOnSelected
+                  selectedKind === 'mine' || selectedKind === 'heldMine'
                     ? 'navigate'
-                    : selected.status === 'Available'
-                      ? 'car-outline'
-                      : 'car'
+                    : selectedKind === 'offline'
+                      ? 'cloud-offline-outline'
+                      : selectedKind === 'open'
+                        ? 'car-outline'
+                        : 'car'
                 }
                 size={22}
                 color={
-                  mySessionOnSelected
+                  selectedKind === 'mine' || selectedKind === 'heldMine'
                     ? colors.primary
-                    : selected.status === 'Available'
+                    : selectedKind === 'open'
                       ? colors.available
-                      : colors.occupied
+                      : selectedKind === 'taken'
+                        ? colors.occupied
+                        : colors.warning
                 }
               />
             </View>
@@ -513,14 +639,26 @@ export function MapScreen() {
               </Text>
               <StatusBadge
                 label={
-                  mySessionOnSelected
+                  selectedKind === 'mine'
                     ? 'Your spot'
-                    : selected.status === 'Available'
-                      ? 'Open'
-                      : 'Taken'
+                    : selectedKind === 'heldMine'
+                      ? 'Held for you'
+                      : selectedKind === 'held'
+                        ? 'Held'
+                        : selectedKind === 'offline'
+                          ? 'Offline'
+                          : selectedKind === 'open'
+                            ? 'Open'
+                            : 'Taken'
                 }
                 tone={
-                  mySessionOnSelected || selected.status === 'Available' ? 'available' : 'occupied'
+                  selectedKind === 'mine' || selectedKind === 'heldMine'
+                    ? 'info'
+                    : selectedKind === 'open'
+                      ? 'available'
+                      : selectedKind === 'taken'
+                        ? 'occupied'
+                        : 'warning'
                 }
               />
             </View>
@@ -538,7 +676,9 @@ export function MapScreen() {
             {sheet.secondaryTitle !== 'Close' ? (
               <Button
                 title={sheet.secondaryTitle}
-                variant="secondary"
+                variant={sheet.secondaryVariant ?? 'secondary'}
+                loading={sheet.secondaryLoading}
+                disabled={sheet.secondaryDisabled}
                 onPress={sheet.onSecondary}
                 style={styles.actionBtn}
               />

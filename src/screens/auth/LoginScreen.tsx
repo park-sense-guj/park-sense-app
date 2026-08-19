@@ -14,6 +14,7 @@ import type { AuthStackParamList } from '../../navigation/types';
 import { loginUser, sendPasswordReset, setSessionPassword } from '../../services/authService';
 import {
   authenticateWithBiometrics,
+  displayBiometricLabel,
   enableBiometrics,
   getBiometricLabel,
   getStoredCredentials,
@@ -25,12 +26,18 @@ import {
   readableGoogleSignInError,
   signInWithGoogle,
 } from '../../services/googleAuthService';
+import { useAuthStore } from '../../store/authStore';
 import { useTheme } from '../../theme/ThemeProvider';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
 export function LoginScreen({ navigation }: Props) {
   const { colors } = useTheme();
+  const authError = useAuthStore((state) => state.error);
+  const clearAuthError = useAuthStore((state) => state.clearError);
+  const signOut = useAuthStore((state) => state.signOut);
+  const firebaseUser = useAuthStore((state) => state.firebaseUser);
+  const profile = useAuthStore((state) => state.profile);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [emailError, setEmailError] = useState('');
@@ -40,7 +47,9 @@ export function LoginScreen({ navigation }: Props) {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
   const [biometricLabel, setBiometricLabel] = useState<string | null>(null);
+  const chipLabel = biometricLabel ? displayBiometricLabel(biometricLabel) : null;
   const googleReady = isGoogleSignInConfigured();
+  const displayError = formError || authError || '';
 
   const styles = useMemo(
     () =>
@@ -74,6 +83,7 @@ export function LoginScreen({ navigation }: Props) {
 
   async function submitWithPassword(nextEmail: string, nextPassword: string) {
     setFormError('');
+    clearAuthError();
     const nextEmailError = nextEmail.includes('@') ? '' : 'Enter a valid email address.';
     const nextPasswordError = nextPassword.length >= 6 ? '' : 'Password must be at least 6 characters.';
     setEmailError(nextEmailError);
@@ -95,6 +105,7 @@ export function LoginScreen({ navigation }: Props) {
 
   async function onGoogleSignIn() {
     setFormError('');
+    clearAuthError();
     setGoogleLoading(true);
     try {
       const result = await signInWithGoogle();
@@ -113,9 +124,9 @@ export function LoginScreen({ navigation }: Props) {
     if (!stored || !biometricLabel) {
       return;
     }
-    const ok = await authenticateWithBiometrics(`Sign in to ParkSense with ${biometricLabel}`);
+    const ok = await authenticateWithBiometrics(`Sign in to ParkSense with ${chipLabel}`);
     if (!ok) {
-      setFormError(`${biometricLabel} was cancelled.`);
+      setFormError(`${chipLabel} was cancelled.`);
       return;
     }
     await submitWithPassword(stored.email, stored.password);
@@ -156,12 +167,12 @@ export function LoginScreen({ navigation }: Props) {
       tone: 'neutral' as const,
     });
   }
-  if (biometricLabel) {
+  if (chipLabel) {
     altMethods.push({
       key: 'biometric',
-      label: biometricLabel,
-      accessibilityLabel: `Sign in with ${biometricLabel}`,
-      icon: (biometricLabel.includes('Face') ? 'scan-outline' : 'finger-print-outline') as
+      label: chipLabel,
+      accessibilityLabel: `Sign in with ${chipLabel}`,
+      icon: (chipLabel.includes('Face') ? 'scan-outline' : 'finger-print-outline') as
         | 'scan-outline'
         | 'finger-print-outline',
       iconColor: colors.primaryDark,
@@ -220,9 +231,19 @@ export function LoginScreen({ navigation }: Props) {
           <Text style={styles.forgot}>{resetLoading ? 'Sending…' : 'Forgot password?'}</Text>
         </Pressable>
       </View>
-      {formError ? (
+      {displayError ? (
         <View style={styles.errorBox}>
-          <Text style={styles.error}>{formError}</Text>
+          <Text style={styles.error}>{displayError}</Text>
+          {firebaseUser && !profile ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Sign out and try again"
+              onPress={() => void signOut()}
+              style={{ marginTop: 8 }}
+            >
+              <Text style={[styles.forgot, { textAlign: 'left' }]}>Sign out and try again</Text>
+            </Pressable>
+          ) : null}
         </View>
       ) : null}
       <Button
@@ -238,12 +259,6 @@ export function LoginScreen({ navigation }: Props) {
           <AuthDivider label="or continue with" />
           <AuthAltMethods methods={altMethods} />
         </>
-      ) : null}
-
-      {!googleReady ? (
-        <View style={styles.errorBox}>
-          <Text style={styles.error}>Google Sign-In needs EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID in .env.</Text>
-        </View>
       ) : null}
     </AuthShell>
   );
@@ -282,5 +297,14 @@ function readableAuthError(message: string): string {
   if (message.includes('too-many-requests')) {
     return 'Too many attempts. Try again later.';
   }
-  return 'Login failed. Check your details and try again.';
+  if (message.includes('network-request-failed') || message.includes('Network')) {
+    return 'Network error. Check your connection and try again.';
+  }
+  if (message.includes('api-key-not-valid') || message.includes('INVALID_API_KEY')) {
+    return 'Firebase API key is invalid in this build. Rebuild after fixing .env.';
+  }
+  if (message.includes('Firebase is not configured')) {
+    return message;
+  }
+  return message || 'Login failed. Check your details and try again.';
 }

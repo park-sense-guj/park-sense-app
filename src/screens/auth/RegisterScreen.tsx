@@ -169,11 +169,7 @@ export function RegisterScreen({ navigation }: Props) {
           label="Continue with Google"
           onPress={() => void onGoogleSignIn()}
         />
-      ) : (
-        <View style={styles.errorBox}>
-          <Text style={styles.error}>Google Sign-In needs EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID in .env.</Text>
-        </View>
-      )}
+      ) : null}
     </AuthShell>
   );
 }

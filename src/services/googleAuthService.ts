@@ -1,4 +1,5 @@
 import { GoogleAuthProvider, reauthenticateWithCredential, signInWithCredential } from 'firebase/auth';
+import { NativeModules, Platform, TurboModuleRegistry } from 'react-native';
 
 import { env } from '../config/env';
 import { getFirebaseAuth } from '../config/firebase';
@@ -7,20 +8,32 @@ type GoogleSignInModule = typeof import('@react-native-google-signin/google-sign
 
 let configured = false;
 
+/** getEnforcing() redboxes even inside try/catch. Probe first, then require. */
+function hasNativeGoogleSignIn(): boolean {
+  return Boolean(TurboModuleRegistry.get('RNGoogleSignin') ?? NativeModules.RNGoogleSignin);
+}
+
 function getGoogleSignIn(): GoogleSignInModule {
-  // Lazy load so the app still boots before a native rebuild includes RNGoogleSignin.
+  if (!hasNativeGoogleSignIn()) {
+    throw new Error(
+      'Google Sign-In needs a native rebuild. Run expo run:ios or expo run:android, then try again.',
+    );
+  }
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   return require('@react-native-google-signin/google-signin') as GoogleSignInModule;
 }
 
 export function configureGoogleSignIn(): void {
-  if (configured || !env.googleWebClientId) {
+  if (configured || !env.googleWebClientId || !hasNativeGoogleSignIn()) {
     return;
   }
   try {
     const { GoogleSignin } = getGoogleSignIn();
     GoogleSignin.configure({
       webClientId: env.googleWebClientId,
+      // iOS also has CLIENT_ID in GoogleService-Info.plist; passing it explicitly
+      // avoids Release builds failing to resolve the iOS OAuth client.
+      iosClientId: env.googleIosClientId || undefined,
       offlineAccess: false,
       profileImageSize: 160,
     });
@@ -54,14 +67,24 @@ export async function signInWithGoogle(): Promise<'success' | 'cancelled'> {
   }
 
   configureGoogleSignIn();
-  await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+  if (Platform.OS === 'android') {
+    await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+  }
+  // Clear a stale Google session so Release builds don't silently cancel.
+  try {
+    await GoogleSignin.signOut();
+  } catch {
+    // Ignore — first sign-in has nothing to clear.
+  }
   const response = await GoogleSignin.signIn();
   if (!isSuccessResponse(response)) {
     return 'cancelled';
   }
   const idToken = response.data.idToken;
   if (!idToken) {
-    throw new Error('Google did not return an ID token. Check the Web client ID in Firebase.');
+    throw new Error(
+      'Google did not return an ID token. Use the Web client ID (not the iOS client ID) in EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID.',
+    );
   }
   const credential = GoogleAuthProvider.credential(idToken);
   await signInWithCredential(getFirebaseAuth(), credential);
@@ -86,7 +109,9 @@ export async function reauthenticateWithGoogle(): Promise<void> {
   }
 
   configureGoogleSignIn();
-  await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+  if (Platform.OS === 'android') {
+    await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+  }
   const response = await GoogleSignin.signIn();
   if (!isSuccessResponse(response)) {
     throw new Error('Google confirmation was cancelled.');

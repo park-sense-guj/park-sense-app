@@ -1,4 +1,3 @@
-import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { InteractionManager, Platform } from 'react-native';
 
@@ -37,6 +36,7 @@ async function ensurePermission(source: PhotoSource): Promise<boolean> {
 }
 
 async function compressToDataUrl(uri: string): Promise<string> {
+  const { manipulateAsync, SaveFormat } = await import('expo-image-manipulator');
   let width = MAX_EDGE;
   let quality = 0.55;
   let dataUrl = '';

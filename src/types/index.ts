@@ -23,7 +23,15 @@ export type ParkingSlot = {
   longitude: number;
   status: SlotStatus;
   adminId?: string;
+  heldByUserId?: string;
+  heldByName?: string;
+  heldUntil?: number;
+  occupiedByUserId?: string;
+  occupiedByName?: string;
+  occupiedByRole?: UserRole;
 };
+
+export type BayKind = 'offline' | 'mine' | 'heldMine' | 'held' | 'open' | 'taken';
 
 export type Sensor = {
   sensorId: string;

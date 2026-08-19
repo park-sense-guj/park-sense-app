@@ -29,27 +29,32 @@ export function TextField({
         label: { color: colors.text, fontSize: 13, fontWeight: '600', marginBottom: 6 },
         required: { color: colors.occupied },
         inputWrap: {
-          backgroundColor: colors.input,
+          backgroundColor: colors.backgroundAlt,
           borderWidth: 1,
           borderColor: colors.inputBorder,
           borderRadius: radius.md,
-          minHeight: 52,
+          height: 52,
           flexDirection: 'row',
           alignItems: 'center',
-          paddingHorizontal: 14,
+          paddingLeft: 14,
+          paddingRight: showToggle ? 4 : 14,
         },
         input: {
-          flex: 1,
+          flexGrow: 1,
+          flexShrink: 1,
+          flexBasis: 0,
+          minWidth: 0,
+          height: 52,
           fontSize: 16,
           color: colors.text,
-          minHeight: 52,
-          paddingVertical: 12,
+          paddingVertical: 0,
+          includeFontPadding: false,
         },
         inputError: { borderColor: colors.occupied, backgroundColor: colors.occupiedSoft },
-        eye: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+        eye: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
         error: { color: colors.occupied, marginTop: 6, fontSize: 13, fontWeight: '600' },
       }),
-    [colors],
+    [colors, showToggle],
   );
 
   return (
@@ -63,7 +68,9 @@ export function TextField({
           placeholderTextColor={colors.textMuted}
           style={styles.input}
           autoCapitalize="none"
+          autoCorrect={false}
           secureTextEntry={hidden}
+          underlineColorAndroid="transparent"
           accessibilityLabel={label}
           {...rest}
         />

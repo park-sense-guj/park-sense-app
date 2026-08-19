@@ -32,6 +32,7 @@ yarn-error.*
 # local env files and secrets
 .env
 .env*.local
+firmware/**/secrets.h
 *.p8
 serviceAccount*.json
 google-services.json

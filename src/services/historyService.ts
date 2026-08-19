@@ -1,10 +1,10 @@
-import { get, onValue, push, ref, remove, update } from 'firebase/database';
+import { get, onValue, push, ref, remove, runTransaction, update } from 'firebase/database';
 
 import { getFirebaseDatabase } from '../config/firebase';
 import type { ParkingHistory, ParkingSlot } from '../types';
+import { holdIsLive } from './parkingHoldService';
 import { assertOnline, withNetworkTimeout } from './networkService';
 import { notifyUsersSlotAvailable } from './notificationService';
-import { setSlotStatus } from './parkingService';
 import { listLotWatcherIds } from './watchService';
 
 export function listenParkingHistory(
@@ -36,25 +36,53 @@ export function findActiveSession(
 }
 
 /**
- * Software-only park: create history + mark the pin Occupied so open/taken counts update.
+ * Bind this driver to a bay they already hold, after the IR sensor reports Occupied.
  */
-export async function startParkingSession(userId: string, slot: ParkingSlot): Promise<string> {
+export async function startParkingSession(
+  userId: string,
+  slot: ParkingSlot,
+  driver?: { fullName?: string },
+): Promise<string> {
   assertOnline('start a parking session');
-  if (slot.status !== 'Available') {
-    throw new Error('That space is no longer available. Pick another open pin.');
-  }
 
   return withNetworkTimeout(
     (async () => {
-      const existing = await get(ref(getFirebaseDatabase(), `parkingHistory/${userId}`));
+      const db = getFirebaseDatabase();
+      const existing = await get(ref(db, `parkingHistory/${userId}`));
       const value = existing.val() as Record<string, Omit<ParkingHistory, 'historyId'>> | null;
       if (value) {
         const active = Object.values(value).find((item) => !item.exitTime);
         if (active) {
-          throw new Error(
-            `You already have an active session at ${active.slotNumber}. End it in Activity first.`,
-          );
+          throw new Error(`You already have an active session at ${active.slotNumber}.`);
         }
+      }
+
+      const displayName = driver?.fullName || 'Driver';
+      const slotRef = ref(db, `parkingSlots/${slot.slotId}`);
+      const claim = await runTransaction(slotRef, (current) => {
+        if (!current) {
+          return current;
+        }
+        if (current.status !== 'Occupied') {
+          return;
+        }
+        if (!holdIsLive({ ...current, slotId: slot.slotId }, Date.now()) || current.heldByUserId !== userId) {
+          return;
+        }
+        if (current.occupiedByUserId && current.occupiedByUserId !== userId) {
+          return;
+        }
+        return {
+          ...current,
+          occupiedByUserId: userId,
+          occupiedByName: displayName,
+          occupiedByRole: 'user',
+        };
+      });
+
+      const claimed = claim.snapshot.val() as Omit<ParkingSlot, 'slotId'> | null;
+      if (!claim.committed || claimed?.occupiedByUserId !== userId) {
+        throw new Error('Hold this bay first, then cover the IR sensor.');
       }
 
       const now = Date.now();
@@ -66,8 +94,7 @@ export async function startParkingSession(userId: string, slot: ParkingSlot): Pr
         entryTime: now,
         bookingDate: new Date(now).toISOString().slice(0, 10),
       };
-      const created = await push(ref(getFirebaseDatabase(), `parkingHistory/${userId}`), record);
-      await setSlotStatus(slot.slotId, 'Occupied');
+      const created = await push(ref(db, `parkingHistory/${userId}`), record);
       return created.key ?? '';
     })(),
     15_000,
@@ -76,7 +103,7 @@ export async function startParkingSession(userId: string, slot: ParkingSlot): Pr
 }
 
 /**
- * Software-only leave: close history + free the pin + alert lot watchers.
+ * Close history only. The IR node frees the pin when the bay is empty.
  */
 export async function endParkingSession(userId: string, historyId: string): Promise<void> {
   assertOnline('leave this slot');
@@ -93,7 +120,14 @@ export async function endParkingSession(userId: string, historyId: string): Prom
       }
 
       await update(historyRef, { exitTime: Date.now() });
-      await setSlotStatus(session.slotId, 'Available');
+      await update(ref(getFirebaseDatabase()), {
+        [`parkingSlots/${session.slotId}/occupiedByUserId`]: null,
+        [`parkingSlots/${session.slotId}/occupiedByName`]: null,
+        [`parkingSlots/${session.slotId}/occupiedByRole`]: null,
+        [`parkingSlots/${session.slotId}/heldByUserId`]: null,
+        [`parkingSlots/${session.slotId}/heldByName`]: null,
+        [`parkingSlots/${session.slotId}/heldUntil`]: null,
+      });
 
       const watchers = (await listLotWatcherIds(session.locationName)).filter((id) => id !== userId);
       if (watchers.length > 0) {
@@ -108,6 +142,18 @@ export async function endParkingSession(userId: string, historyId: string): Prom
     15_000,
     'Leaving is taking too long. Check your connection and try again.',
   );
+}
+
+export async function releaseParkingOnLogout(userId: string): Promise<void> {
+  const historySnap = await get(ref(getFirebaseDatabase(), `parkingHistory/${userId}`));
+  const value = historySnap.val() as Record<string, Omit<ParkingHistory, 'historyId'>> | null;
+  if (!value) {
+    return;
+  }
+  const active = Object.entries(value).filter(([, item]) => !item.exitTime);
+  for (const [historyId] of active) {
+    await endParkingSession(userId, historyId);
+  }
 }
 
 export async function deleteUserParkingHistory(userId: string): Promise<void> {

@@ -17,7 +17,9 @@ import { getFirebaseAuth, getFirebaseDatabase } from '../config/firebase';
 import type { UserProfile, UserRole } from '../types';
 import { disableBiometrics } from './biometricService';
 import { reauthenticateWithGoogle, signOutGoogle } from './googleAuthService';
-import { deleteUserParkingHistory } from './historyService';
+import { deleteUserParkingHistory, releaseParkingOnLogout } from './historyService';
+import { clearDriverPresence } from './driverPresenceService';
+import { releaseHoldsForUser } from './parkingHoldService';
 import { deleteUserNotifications } from './notificationService';
 
 function roleForEmail(email: string): UserRole {
@@ -42,10 +44,13 @@ export async function registerUser(input: {
     userId: credential.user.uid,
     fullName: input.fullName.trim(),
     email: input.email.trim().toLowerCase(),
-    contactNo: input.contactNo?.trim() || undefined,
     registeredOn: Date.now(),
     role: roleForEmail(input.email),
   };
+  const contactNo = input.contactNo?.trim();
+  if (contactNo) {
+    profile.contactNo = contactNo;
+  }
 
   await set(ref(getFirebaseDatabase(), `users/${profile.userId}`), profile);
   return profile;
@@ -64,6 +69,10 @@ export async function sendPasswordReset(email: string): Promise<void> {
 }
 
 export async function logoutUser() {
+  const userId = getFirebaseAuth().currentUser?.uid;
+  if (userId) {
+    await Promise.allSettled([clearDriverPresence(userId), releaseHoldsForUser(userId)]);
+  }
   await signOutGoogle();
   await firebaseSignOut(getFirebaseAuth());
 }
@@ -87,6 +96,7 @@ export async function deleteUserAccount(options?: { password?: string }): Promis
   }
 
   const userId = user.uid;
+  await Promise.allSettled([releaseHoldsForUser(userId), releaseParkingOnLogout(userId)]);
   await Promise.all([
     deleteUserParkingHistory(userId),
     deleteUserNotifications(userId),
@@ -101,11 +111,18 @@ export async function deleteUserAccount(options?: { password?: string }): Promis
 export function listenUserProfile(
   userId: string,
   onChange: (profile: UserProfile | null) => void,
+  onError?: (message: string) => void,
 ): () => void {
   const profileRef = ref(getFirebaseDatabase(), `users/${userId}`);
-  return onValue(profileRef, (snapshot) => {
-    onChange((snapshot.val() as UserProfile | null) ?? null);
-  });
+  return onValue(
+    profileRef,
+    (snapshot) => {
+      onChange((snapshot.val() as UserProfile | null) ?? null);
+    },
+    (error) => {
+      onError?.(error.message || 'Could not load your profile.');
+    },
+  );
 }
 
 export async function ensureUserProfile(params: {
@@ -113,7 +130,7 @@ export async function ensureUserProfile(params: {
   email: string;
   fullName?: string | null;
   photoUrl?: string | null;
-}): Promise<void> {
+}): Promise<UserProfile> {
   const profileRef = ref(getFirebaseDatabase(), `users/${params.userId}`);
   const snapshot = await get(profileRef);
   if (snapshot.exists()) {
@@ -130,18 +147,22 @@ export async function ensureUserProfile(params: {
     }
     if (Object.keys(patch).length > 0) {
       await update(profileRef, patch);
+      return { ...existing, ...patch };
     }
-    return;
+    return existing;
   }
   const profile: UserProfile = {
     userId: params.userId,
     fullName: params.fullName?.trim() || 'ParkSense User',
     email: params.email.toLowerCase(),
-    photoUrl: params.photoUrl || undefined,
     registeredOn: Date.now(),
     role: roleForEmail(params.email),
   };
+  if (params.photoUrl) {
+    profile.photoUrl = params.photoUrl;
+  }
   await set(profileRef, profile);
+  return profile;
 }
 
 export async function updatePreferredLocation(userId: string, locationName: string) {

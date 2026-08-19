@@ -1,9 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { CommonActions } from '@react-navigation/native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from 'react-native-maps';
+import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import MapView, { Marker, Polyline, PROVIDER_DEFAULT, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button } from '../../components/Button';
@@ -13,12 +12,8 @@ import { useParkingHistory } from '../../hooks/useParkingHistory';
 import { useParkingSlots } from '../../hooks/useParkingSlots';
 import { useUserLocation } from '../../hooks/useUserLocation';
 import type { UserStackParamList } from '../../navigation/types';
-import { playErrorFeedback, playSuccessFeedback } from '../../services/feedbackService';
-import {
-  endParkingSession,
-  findActiveSession,
-  startParkingSession,
-} from '../../services/historyService';
+import { playErrorFeedback } from '../../services/feedbackService';
+import { findActiveSession } from '../../services/historyService';
 import {
   distanceMeters,
   distanceToRouteMeters,
@@ -28,6 +23,7 @@ import {
   type RouteResult,
 } from '../../services/mapService';
 import { readableNetworkError } from '../../services/networkService';
+import { bayKind, holdIsLive } from '../../services/parkingHoldService';
 import { useAuthStore } from '../../store/authStore';
 import { useConnectivityStore } from '../../store/connectivityStore';
 import { useTheme } from '../../theme/ThemeProvider';
@@ -54,7 +50,7 @@ export function NavigateScreen({ navigation, route }: Props) {
   const { location, heading, denied, loading: locationLoading } = useUserLocation({
     watch: true,
   });
-  const { slots, isSensorFaulty } = useParkingSlots();
+  const { slots, isSensorFaulty, now } = useParkingSlots();
   const { items: historyItems } = useParkingHistory(profile?.userId);
   const mapRef = useRef<MapView | null>(null);
   const lastRouteAt = useRef(0);
@@ -65,9 +61,7 @@ export function NavigateScreen({ navigation, route }: Props) {
   const [guiding, setGuiding] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
   const [arrived, setArrived] = useState(false);
-  const [localHistoryId, setLocalHistoryId] = useState<string | null>(null);
-  const [leftSession, setLeftSession] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const wasParkedRef = useRef(false);
 
   const slot = useMemo(
     () => slots.find((item) => item.slotId === routeSlot.slotId) ?? routeSlot,
@@ -83,10 +77,24 @@ export function NavigateScreen({ navigation, route }: Props) {
   const destination: LatLng = { latitude: slot.latitude, longitude: slot.longitude };
   const origin = location ?? destination;
 
-  const sessionId = activeOnThisSlot?.historyId ?? localHistoryId;
-  const isParked = Boolean(sessionId) && !leftSession;
-  const flowStep: FlowStep = leftSession ? 'done' : isParked ? 'parked' : 'drive';
-  const canPark = !isParked && !leftSession && slot.status === 'Available' && !sensorOffline;
+  const isParked = Boolean(activeOnThisSlot);
+  const headingHere =
+    holdIsLive(slot, now) && slot.heldByUserId === profile?.userId && !isParked;
+  const kind = bayKind(
+    slot,
+    {
+      userId: profile?.userId,
+      offline: sensorOffline,
+      sessionOnSlot: isParked,
+    },
+    now,
+  );
+  if (isParked) {
+    wasParkedRef.current = true;
+  }
+  const flowStep: FlowStep = isParked ? 'parked' : wasParkedRef.current ? 'done' : 'drive';
+  const destKey = `${slot.latitude.toFixed(5)},${slot.longitude.toFixed(5)}`;
+  const destKeyRef = useRef(destKey);
 
   const currentStep = routeResult?.steps[stepIndex] ?? null;
   const remainingSteps = Math.max((routeResult?.steps.length ?? 0) - stepIndex, 0);
@@ -94,8 +102,8 @@ export function NavigateScreen({ navigation, route }: Props) {
   const styles = useMemo(
     () =>
       StyleSheet.create({
-        flex: { flex: 1, backgroundColor: colors.background },
-        map: { flex: 1 },
+        flex: { flex: 1, backgroundColor: Platform.OS === 'android' ? 'transparent' : colors.background },
+        map: { flex: 1, width: '100%', height: '100%' },
         banner: {
           position: 'absolute',
           left: 16,
@@ -299,6 +307,14 @@ export function NavigateScreen({ navigation, route }: Props) {
     [destination],
   );
 
+  useEffect(() => {
+    if (destKeyRef.current === destKey) {
+      return;
+    }
+    destKeyRef.current = destKey;
+    setRouteResult(null);
+  }, [destKey]);
+
   // Fetch once when we first get a location (not on every GPS tick).
   useEffect(() => {
     if (!location || routeResult || isParked || flowStep === 'done') {
@@ -383,89 +399,6 @@ export function NavigateScreen({ navigation, route }: Props) {
     }
   }, [isParked, flowStep]);
 
-  async function onParked() {
-    if (!profile || isParked) {
-      return;
-    }
-    if (!isOnline) {
-      playErrorFeedback();
-      Alert.alert('You’re offline', 'Reconnect to mark this space as taken on the live map.');
-      return;
-    }
-    setBusy(true);
-    try {
-      const liveSlot = slots.find((item) => item.slotId === slot.slotId) ?? slot;
-      const id = await startParkingSession(profile.userId, liveSlot);
-      setLocalHistoryId(id);
-      setLeftSession(false);
-      setGuiding(false);
-      playSuccessFeedback();
-      Alert.alert(
-        'You’re parked',
-        `${slot.slotNumber} is now taken on the map. Open/taken counts update live. Tap Leave slot when you go.`,
-        [{ text: 'OK' }],
-      );
-    } catch (error) {
-      playErrorFeedback();
-      Alert.alert(
-        'Could not start session',
-        readableNetworkError(error, 'Try again when your connection is stable.'),
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function onLeave() {
-    if (!sessionId || !profile) {
-      return;
-    }
-    if (!isOnline) {
-      playErrorFeedback();
-      Alert.alert('You’re offline', 'Reconnect to free this space on the live map.');
-      return;
-    }
-    Alert.alert('Leave this slot?', 'This frees the pin and marks your session finished in Activity.', [
-      { text: 'Stay parked', style: 'cancel' },
-      {
-        text: 'Leave slot',
-        style: 'destructive',
-        onPress: () => {
-          void (async () => {
-            setBusy(true);
-            try {
-              await endParkingSession(profile.userId, sessionId);
-              setLocalHistoryId(null);
-              setLeftSession(true);
-              playSuccessFeedback();
-              Alert.alert('Session ended', 'The space is open again. Open/taken counts updated.', [
-                {
-                  text: 'View Activity',
-                  onPress: () =>
-                    navigation.dispatch(
-                      CommonActions.reset({
-                        index: 0,
-                        routes: [{ name: 'UserTabs', params: { screen: 'HistoryTab' } }],
-                      }),
-                    ),
-                },
-                { text: 'Back to map', onPress: () => navigation.goBack() },
-              ]);
-            } catch (error) {
-              playErrorFeedback();
-              Alert.alert(
-                'Could not end session',
-                readableNetworkError(error, 'Try again when your connection is stable.'),
-              );
-            } finally {
-              setBusy(false);
-            }
-          })();
-        },
-      },
-    ]);
-  }
-
   async function onOpenMaps() {
     try {
       await openExternalNavigation(destination, `Parking ${slot.slotNumber}`);
@@ -500,11 +433,11 @@ export function NavigateScreen({ navigation, route }: Props) {
         return `Drive was about ${routeResult.durationText} · ${routeResult.distanceText}`;
       }
       return isParked
-        ? 'You’re at this space. Leave when you go so others see it as open.'
-        : 'Session finished — this space is free on the map again.';
+        ? 'Parked — your session is live. It ends when the IR sensor opens.'
+        : 'Session finished when the bay opened.';
     }
     if (arrived) {
-      return 'You’ve arrived. Tap I’m parked when you’re in the space.';
+      return 'You’ve arrived. Cover the IR sensor to start your session automatically.';
     }
     if (!isOnline && !routeResult) {
       return 'You’re offline. Reconnect for turn guidance, or open Apple/Google Maps.';
@@ -540,68 +473,65 @@ export function NavigateScreen({ navigation, route }: Props) {
       return 'Sensor offline for this space. Go back and pick another pin.';
     }
     if (flowStep === 'done') {
-      return 'All done — this space is free on the map again.';
+      return 'The bay opened, so your session ended automatically.';
     }
     if (isParked) {
-      return 'Leave when you go so the pin turns green and lot watchers can be notified.';
+      return 'You’re parked here. Drive away and uncover the IR sensor to end the session.';
     }
     if (arrived) {
-      return 'Park in the bay, then confirm with I’m parked.';
+      return 'Park in the bay. Covering the IR sensor starts your session — no extra tap.';
     }
     if (guiding) {
       return remainingSteps > 1
         ? `${remainingSteps} turns left · map follows you`
         : 'Almost there · map follows you';
     }
-    if (slot.status === 'Occupied') {
-      return 'This space was just taken. Go back and pick a green pin.';
+    if (slot.status === 'Occupied' && !headingHere && !isParked) {
+      return 'This space was taken by someone else. Go back and pick an open pin.';
+    }
+    if (headingHere) {
+      return 'This bay is held for you. Cover the IR sensor when you park — no extra tap.';
     }
     return 'Start guidance for turn-by-turn directions to this space.';
   })();
 
-  const nearDestination =
-    arrived ||
-    Boolean(
-      location && distanceMeters(location, destination) <= DESTINATION_ARRIVE_METERS * 2,
-    );
-  const showParkAction = flowStep === 'drive' && nearDestination && canPark;
-
-  const badgeLabel = sensorOffline
-    ? 'Sensor offline'
-    : isParked
-      ? 'Your spot'
-      : guiding
-        ? 'Guiding'
-        : arrived
-          ? 'Arrived'
-          : flowStep === 'done'
-            ? 'Done'
-            : slot.status === 'Available'
+  const badgeLabel =
+    kind === 'offline'
+      ? 'Sensor offline'
+      : kind === 'mine'
+        ? 'Your spot'
+        : kind === 'heldMine'
+          ? 'Held for you'
+          : kind === 'held'
+            ? 'Held'
+            : kind === 'open'
               ? 'Open'
               : 'Taken';
 
   const badgeTone =
-    sensorOffline
-      ? ('warning' as const)
-      : isParked || slot.status === 'Available' || arrived || flowStep === 'done'
-        ? ('available' as const)
-        : ('occupied' as const);
+    kind === 'open' || kind === 'mine' || kind === 'heldMine'
+      ? ('available' as const)
+      : kind === 'taken'
+        ? ('occupied' as const)
+        : ('warning' as const);
 
-  const orbBg = sensorOffline
-    ? colors.warningSoft
-    : isParked || flowStep === 'done'
-      ? colors.primarySoft
-      : slot.status === 'Available'
-        ? colors.availableSoft
-        : colors.occupiedSoft;
+  const orbBg =
+    kind === 'offline' || kind === 'held'
+      ? colors.warningSoft
+      : isParked || flowStep === 'done' || kind === 'heldMine'
+        ? colors.primarySoft
+        : kind === 'open'
+          ? colors.availableSoft
+          : colors.occupiedSoft;
 
-  const orbFg = sensorOffline
-    ? colors.warning
-    : isParked || flowStep === 'done'
-      ? colors.primary
-      : slot.status === 'Available'
-        ? colors.available
-        : colors.occupied;
+  const orbFg =
+    kind === 'offline' || kind === 'held'
+      ? colors.warning
+      : isParked || flowStep === 'done' || kind === 'heldMine'
+        ? colors.primary
+        : kind === 'open'
+          ? colors.available
+          : colors.occupied;
 
   const orbIcon =
     flowStep === 'done'
@@ -624,13 +554,14 @@ export function NavigateScreen({ navigation, route }: Props) {
       <MapView
         ref={mapRef}
         style={styles.map}
-        provider={PROVIDER_DEFAULT}
+        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : PROVIDER_DEFAULT}
         initialRegion={{
           latitude: origin.latitude,
           longitude: origin.longitude,
           latitudeDelta: 0.02,
           longitudeDelta: 0.02,
         }}
+        loadingEnabled
         showsUserLocation
         followsUserLocation={guiding && !isParked}
         showsTraffic={guiding}
@@ -643,7 +574,15 @@ export function NavigateScreen({ navigation, route }: Props) {
         <Marker
           key={`${slot.slotId}-${slot.status}`}
           coordinate={destination}
-          pinColor={slot.status === 'Available' ? colors.available : colors.occupied}
+          pinColor={
+            kind === 'open'
+              ? colors.available
+              : kind === 'mine' || kind === 'heldMine'
+                ? colors.primary
+                : kind === 'held' || kind === 'offline'
+                  ? colors.warning
+                  : colors.occupied
+          }
           title={slot.slotNumber}
           tracksViewChanges={false}
         />
@@ -715,7 +654,7 @@ export function NavigateScreen({ navigation, route }: Props) {
           <View style={styles.headerCopy}>
             <Text style={styles.title}>
               {flowStep === 'done'
-                ? `${slot.slotNumber} freed`
+                ? `${slot.slotNumber} done`
                 : isParked
                   ? `Parked at ${slot.slotNumber}`
                   : `To ${slot.slotNumber}`}
@@ -734,38 +673,15 @@ export function NavigateScreen({ navigation, route }: Props) {
 
         <View style={styles.actions}>
           {flowStep === 'drive' ? (
-            <>
-              {showParkAction ? (
-                <Button
-                  title="I’m parked"
-                  onPress={() => void onParked()}
-                  disabled={!isOnline}
-                  loading={busy && !isParked}
-                />
-              ) : null}
-              <Button
-                title={guiding ? 'Stop guidance' : 'Start guidance'}
-                variant={showParkAction ? 'secondary' : 'primary'}
-                onPress={onToggleGuidance}
-                loading={routeLoading && !routeResult}
-                disabled={sensorOffline || (!location && !denied)}
-              />
-            </>
-          ) : null}
-
-          {flowStep === 'parked' ? (
             <Button
-              title="Leave slot"
-              variant="danger"
-              disabled={!isOnline}
-              loading={busy && isParked}
-              onPress={onLeave}
+              title={guiding ? 'Stop guidance' : 'Start guidance'}
+              onPress={onToggleGuidance}
+              loading={routeLoading && !routeResult}
+              disabled={sensorOffline || (!location && !denied)}
             />
-          ) : null}
-
-          {flowStep === 'done' ? (
+          ) : (
             <Button title="Back to map" onPress={() => navigation.goBack()} />
-          ) : null}
+          )}
         </View>
 
         {flowStep === 'drive' ? (

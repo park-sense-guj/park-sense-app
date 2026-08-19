@@ -14,6 +14,7 @@ export function OfflineBanner() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const isOnline = useConnectivityStore((state) => state.isOnline);
+  const ready = useConnectivityStore((state) => state.ready);
 
   const styles = useMemo(
     () =>
@@ -39,7 +40,7 @@ export function OfflineBanner() {
     [colors, insets.top],
   );
 
-  if (isOnline) {
+  if (!ready || isOnline) {
     return null;
   }
 

@@ -26,12 +26,22 @@
 
     "parkingSlots": {
       ".read": "auth != null",
-      ".write": "auth != null"
+      ".write": "auth != null",
+      "$slotId": {
+        ".write": "auth != null",
+        ".validate": "newData.hasChildren(['slotNumber', 'locationName', 'latitude', 'longitude', 'status']) && (newData.child('status').val() === 'Available' || newData.child('status').val() === 'Occupied')",
+        "heldByUserId": {
+          ".validate": "(!newData.exists() && (!data.exists() || data.val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin')) || (newData.exists() && newData.isString() && (newData.val() === data.val() || (newData.val() === auth.uid && (!data.exists() || data.val() === auth.uid || !root.child('parkingSlots').child($slotId).child('heldUntil').exists() || root.child('parkingSlots').child($slotId).child('heldUntil').val() < now))))"
+        },
+        "occupiedByUserId": {
+          ".validate": "(!newData.exists() && (!data.exists() || data.val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin')) || (newData.exists() && newData.isString() && (newData.val() === data.val() || newData.val() === auth.uid))"
+        }
+      }
     },
 
     "sensors": {
       ".read": "auth != null",
-      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
+      ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || (newData.exists() && newData.child('sensorStatus').val() !== 'Faulty'))"
     },
 
     "parkingHistory": {
@@ -57,6 +67,13 @@
     "lotWatchers": {
       ".read": "auth != null",
       ".write": "auth != null"
+    },
+
+    "driverPresence": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid"
+      }
     }
   }
 }

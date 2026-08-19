@@ -12,6 +12,17 @@ type ConnectivityState = {
 
 let active = false;
 let sharedUnsubscribe: (() => void) | null = null;
+let offlineTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Firebase always emits `false` first while the socket is opening. */
+const OFFLINE_GRACE_MS = 2000;
+
+function clearOfflineTimer() {
+  if (offlineTimer) {
+    clearTimeout(offlineTimer);
+    offlineTimer = null;
+  }
+}
 
 /**
  * App-wide online/offline signal from Firebase Realtime Database.
@@ -30,13 +41,27 @@ export const useConnectivityStore = create<ConnectivityState>((set) => ({
     sharedUnsubscribe = onValue(
       connectedRef,
       (snapshot) => {
-        set({ isOnline: snapshot.val() === true, ready: true });
+        if (snapshot.val() === true) {
+          clearOfflineTimer();
+          set({ isOnline: true, ready: true });
+          return;
+        }
+        // Hold off until the first handshake can finish, and ignore brief drops.
+        if (offlineTimer) {
+          return;
+        }
+        offlineTimer = setTimeout(() => {
+          offlineTimer = null;
+          set({ isOnline: false, ready: true });
+        }, OFFLINE_GRACE_MS);
       },
       () => {
+        clearOfflineTimer();
         set({ isOnline: false, ready: true });
       },
     );
     return () => {
+      clearOfflineTimer();
       sharedUnsubscribe?.();
       sharedUnsubscribe = null;
       active = false;

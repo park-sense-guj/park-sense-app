@@ -6,8 +6,10 @@ import {
 import { DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useMemo } from 'react';
+import { Platform } from 'react-native';
 
 import { FloatingTabBar } from '../components/FloatingTabBar';
+import { useAutoParkingSession } from '../hooks/useAutoParkingSession';
 import { AdminDashboardScreen } from '../screens/admin/AdminDashboardScreen';
 import { AdminSensorsScreen } from '../screens/admin/AdminSensorsScreen';
 import { AdminSlotsScreen } from '../screens/admin/AdminSlotsScreen';
@@ -73,6 +75,9 @@ function UserTabNavigator() {
         component={MapScreen}
         options={{
           title: 'Home',
+          sceneContainerStyle: {
+            backgroundColor: Platform.OS === 'android' ? 'transparent' : colors.background,
+          },
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons
               name={focused ? 'home' : 'home-outline'}
@@ -130,11 +135,26 @@ function UserNavigator() {
         animation: 'slide_from_right',
       }}
     >
-      <UserStack.Screen name="UserTabs" component={UserTabNavigator} options={{ headerShown: false }} />
+      <UserStack.Screen
+        name="UserTabs"
+        component={UserTabNavigator}
+        options={{
+          headerShown: false,
+          contentStyle: {
+            backgroundColor: Platform.OS === 'android' ? 'transparent' : colors.background,
+          },
+        }}
+      />
       <UserStack.Screen
         name="Navigate"
         component={NavigateScreen}
-        options={{ title: 'Navigation', headerBackTitle: 'Map' }}
+        options={{
+          title: 'Navigation',
+          headerBackTitle: 'Map',
+          contentStyle: {
+            backgroundColor: Platform.OS === 'android' ? 'transparent' : colors.background,
+          },
+        }}
       />
       <UserStack.Screen
         name="Alerts"
@@ -275,6 +295,15 @@ function AdminNavigator() {
   );
 }
 
+function SignedInNavigator() {
+  useAutoParkingSession();
+  const profile = useAuthStore((state) => state.profile);
+  if (profile?.role === 'admin') {
+    return <AdminNavigator />;
+  }
+  return <UserNavigator />;
+}
+
 export function RootNavigator() {
   const { colors, isDark } = useTheme();
   const profile = useAuthStore((state) => state.profile);
@@ -300,10 +329,8 @@ export function RootNavigator() {
     <NavigationContainer theme={navTheme}>
       {!firebaseUser || !profile ? (
         <AuthNavigator />
-      ) : profile.role === 'admin' ? (
-        <AdminNavigator />
       ) : (
-        <UserNavigator />
+        <SignedInNavigator />
       )}
     </NavigationContainer>
   );

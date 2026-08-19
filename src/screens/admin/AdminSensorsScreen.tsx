@@ -19,7 +19,7 @@ import { useTheme } from '../../theme/ThemeProvider';
 
 export function AdminSensorsScreen() {
   const { colors } = useTheme();
-  const { sensors, slots, stats, loading } = useParkingSlots();
+  const { sensors, slots, stats, loading, isSensorFaulty } = useParkingSlots();
   const isOnline = useConnectivityStore((state) => state.isOnline);
   const [busyId, setBusyId] = useState<string | null>(null);
   const slotById = Object.fromEntries(slots.map((slot) => [slot.slotId, slot]));
@@ -95,9 +95,12 @@ export function AdminSensorsScreen() {
       Alert.alert('You’re offline', 'Reconnect to update sensor status.');
       return;
     }
-    const next = current === 'Faulty' ? 'Simulated' : 'Faulty';
     const slot = slotById[slotId];
     const slotNumber = slot?.slotNumber ?? slotId;
+    const sensor = sensors.find((item) => item.sensorId === sensorId);
+    const restoredStatus =
+      sensor?.sensorType === 'IR' || sensor?.sensorType === 'Ultrasonic' ? 'Active' : 'Simulated';
+    const next = current === 'Faulty' ? restoredStatus : 'Faulty';
 
     if (next === 'Faulty' && slot?.status === 'Occupied') {
       Alert.alert(
@@ -159,12 +162,13 @@ export function AdminSensorsScreen() {
             <EmptyState
               icon="hardware-chip-outline"
               title="No sensors"
-              subtitle="Seed the demo lot first."
+              subtitle="Seed the live lot from the dashboard first."
             />
           )
         }
         renderItem={({ item }) => {
-          const faulty = item.sensorStatus === 'Faulty';
+          const faulty = item.sensorStatus === 'Faulty' || isSensorFaulty(item.slotId);
+          const silent = item.sensorStatus !== 'Faulty' && isSensorFaulty(item.slotId);
           const slot = slotById[item.slotId];
           const slotNumber = slot?.slotNumber ?? item.slotId;
           const occupied = slot?.status === 'Occupied';
@@ -198,14 +202,28 @@ export function AdminSensorsScreen() {
                     </View>
                   </View>
                   <StatusBadge
-                    label={faulty ? 'Sensor offline' : occupied ? 'In use' : 'Healthy'}
+                    label={
+                      item.sensorStatus === 'Faulty'
+                        ? 'Sensor offline'
+                        : silent
+                          ? 'Unplugged'
+                          : occupied
+                            ? 'In use'
+                            : 'Healthy'
+                    }
                     tone={faulty ? 'warning' : occupied ? 'occupied' : 'available'}
                   />
                 </View>
-                {faulty ? (
+                {item.sensorStatus === 'Faulty' ? (
                   <View style={styles.hint}>
                     <Text style={styles.hintText}>
-                      Hidden from the driver map until you mark this sensor healthy.
+                      Shown as Offline on the driver map until you mark this sensor healthy.
+                    </Text>
+                  </View>
+                ) : silent ? (
+                  <View style={styles.hint}>
+                    <Text style={styles.hintText}>
+                      This ESP32 stopped publishing. The pin stays on the map as Offline.
                     </Text>
                   </View>
                 ) : null}
@@ -217,10 +235,10 @@ export function AdminSensorsScreen() {
                   </View>
                 ) : null}
                 <Button
-                  title={faulty ? 'Mark healthy' : 'Mark faulty'}
-                  variant={faulty ? 'primary' : 'secondary'}
+                  title={item.sensorStatus === 'Faulty' ? 'Mark healthy' : 'Mark faulty'}
+                  variant={item.sensorStatus === 'Faulty' ? 'primary' : 'secondary'}
                   loading={busyId === item.sensorId}
-                  disabled={blockFaulty}
+                  disabled={blockFaulty || silent}
                   onPress={() => void toggleFault(item.sensorId, item.sensorStatus, item.slotId)}
                   style={styles.action}
                 />

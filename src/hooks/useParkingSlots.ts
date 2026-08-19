@@ -1,6 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { listenParkingSlots, listenSensors } from '../services/parkingService';
+import { holdIsLive } from '../services/parkingHoldService';
+import {
+  isLiveHardwareSensor,
+  isSensorHeartbeatStale,
+} from '../data/demoLot';
 import type { ParkingSlot, Sensor } from '../types';
 
 export function useParkingSlots() {
@@ -8,6 +13,8 @@ export function useParkingSlots() {
   const [sensors, setSensors] = useState<Sensor[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const heartbeatSeen = useRef<Record<string, { lastUpdated: number; since: number }>>({});
 
   useEffect(() => {
     const stopSlots = listenParkingSlots(
@@ -30,62 +37,105 @@ export function useParkingSlots() {
     };
   }, []);
 
-  const faultySlotIds = useMemo(() => {
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 4000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const liveSensors = useMemo(() => {
+    const hardware = sensors.filter(isLiveHardwareSensor);
+    return hardware.length > 0 ? hardware : sensors;
+  }, [sensors]);
+
+  const liveSlotIds = useMemo(
+    () => new Set(liveSensors.map((sensor) => sensor.slotId)),
+    [liveSensors],
+  );
+
+  const usingLiveHardware = liveSensors.some(
+    (sensor) => sensor.sensorType === 'IR' || sensor.sensorType === 'Ultrasonic',
+  );
+
+  const visibleSlots = useMemo(() => {
+    if (!usingLiveHardware) {
+      return slots;
+    }
+    return slots.filter((slot) => liveSlotIds.has(slot.slotId));
+  }, [slots, usingLiveHardware, liveSlotIds]);
+
+  const offlineSlotIds = useMemo(() => {
     const ids = new Set<string>();
-    for (const sensor of sensors) {
-      if (sensor.sensorStatus === 'Faulty') {
+    for (const sensor of liveSensors) {
+      const prev = heartbeatSeen.current[sensor.sensorId];
+      if (!prev || prev.lastUpdated !== sensor.lastUpdated) {
+        heartbeatSeen.current[sensor.sensorId] = {
+          lastUpdated: sensor.lastUpdated,
+          since: now,
+        };
+      }
+      const seen = heartbeatSeen.current[sensor.sensorId];
+      const silent = isSensorHeartbeatStale(sensor.lastUpdated, now, seen.since);
+      if (sensor.sensorStatus === 'Faulty' || silent) {
         ids.add(sensor.slotId);
       }
     }
     return ids;
-  }, [sensors]);
+  }, [liveSensors, now]);
 
   const onlineSlots = useMemo(
-    () => slots.filter((slot) => !faultySlotIds.has(slot.slotId)),
-    [slots, faultySlotIds],
+    () => visibleSlots.filter((slot) => !offlineSlotIds.has(slot.slotId)),
+    [visibleSlots, offlineSlotIds],
   );
 
   const offlineSlots = useMemo(
-    () => slots.filter((slot) => faultySlotIds.has(slot.slotId)),
-    [slots, faultySlotIds],
+    () => visibleSlots.filter((slot) => offlineSlotIds.has(slot.slotId)),
+    [visibleSlots, offlineSlotIds],
   );
 
   const stats = useMemo(() => {
-    const available = slots.filter((slot) => slot.status === 'Available').length;
-    const occupied = slots.length - available;
+    const available = visibleSlots.filter((slot) => slot.status === 'Available').length;
+    const occupied = visibleSlots.length - available;
     const onlineAvailable = onlineSlots.filter((slot) => slot.status === 'Available').length;
     const onlineOccupied = onlineSlots.length - onlineAvailable;
-    const healthy = sensors.filter((sensor) => sensor.sensorStatus !== 'Faulty').length;
+    const held = onlineSlots.filter((slot) => holdIsLive(slot, now)).length;
+    const openForDrivers = onlineSlots.filter(
+      (slot) => slot.status === 'Available' && !holdIsLive(slot, now),
+    ).length;
+    const healthy = liveSensors.filter((sensor) => !offlineSlotIds.has(sensor.slotId)).length;
     return {
-      total: slots.length,
+      total: visibleSlots.length,
       available,
       occupied,
       onlineTotal: onlineSlots.length,
       onlineAvailable,
       onlineOccupied,
-      offlineSensors: faultySlotIds.size,
+      openForDrivers,
+      held,
+      offlineSensors: offlineSlotIds.size,
       healthySensors: healthy,
-      faultySensors: sensors.length - healthy,
+      faultySensors: liveSensors.length - healthy,
     };
-  }, [slots, sensors, onlineSlots, faultySlotIds]);
+  }, [visibleSlots, liveSensors, onlineSlots, offlineSlotIds, now]);
 
   function isSensorFaulty(slotId: string): boolean {
-    return faultySlotIds.has(slotId);
+    return offlineSlotIds.has(slotId);
   }
 
   function sensorForSlot(slotId: string): Sensor | undefined {
-    return sensors.find((sensor) => sensor.slotId === slotId);
+    return liveSensors.find((sensor) => sensor.slotId === slotId);
   }
 
   return {
-    slots,
-    sensors,
+    slots: visibleSlots,
+    sensors: liveSensors,
     onlineSlots,
     offlineSlots,
     loading,
     error,
     stats,
-    faultySlotIds,
+    now,
+    faultySlotIds: offlineSlotIds,
+    usingLiveHardware,
     isSensorFaulty,
     sensorForSlot,
   };

@@ -1,26 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, View } from 'react-native';
+import { useMemo } from 'react';
+import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
 
-import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
 import { GlassCard } from '../../components/GlassCard';
 import { Screen } from '../../components/Screen';
 import { StatusBadge } from '../../components/StatusBadge';
 import { useParkingSlots } from '../../hooks/useParkingSlots';
-import { notifyUsersSlotAvailable } from '../../services/notificationService';
-import { readableNetworkError } from '../../services/networkService';
-import { setSlotOccupancy } from '../../services/parkingService';
-import { listLotWatcherIds } from '../../services/watchService';
-import { useConnectivityStore } from '../../store/connectivityStore';
+import { holdIsLive } from '../../services/parkingHoldService';
 import { useTheme } from '../../theme/ThemeProvider';
-import type { ParkingSlot } from '../../types';
 
 export function AdminSlotsScreen() {
   const { colors } = useTheme();
-  const { slots, stats, loading, isSensorFaulty } = useParkingSlots();
-  const isOnline = useConnectivityStore((state) => state.isOnline);
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const { slots, stats, loading, isSensorFaulty, sensorForSlot } = useParkingSlots();
   const offlineCount = stats.offlineSensors;
 
   const styles = useMemo(
@@ -79,55 +71,23 @@ export function AdminSlotsScreen() {
         meta: { marginTop: 3, color: colors.textMuted, fontSize: 13, fontWeight: '600' },
         hint: {
           marginTop: 10,
-          color: colors.warning,
+          color: colors.textMuted,
           fontSize: 13,
-          fontWeight: '700',
+          fontWeight: '600',
           lineHeight: 18,
         },
-        action: { marginTop: 14 },
         loading: { paddingTop: 48, alignItems: 'center', gap: 12 },
         loadingText: { color: colors.textMuted, fontWeight: '600' },
       }),
     [colors],
   );
 
-  async function toggle(slot: ParkingSlot) {
-    if (!isOnline) {
-      Alert.alert('You’re offline', 'Reconnect to update slot occupancy.');
-      return;
-    }
-    const next = slot.status === 'Available' ? 'Occupied' : 'Available';
-    setBusyId(slot.slotId);
-    try {
-      await setSlotOccupancy(slot.slotId, next);
-      if (next === 'Available') {
-        await notifyWatchers(slot);
-      }
-    } catch (error) {
-      Alert.alert('Update failed', readableNetworkError(error, 'Unknown error'));
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  function confirmToggle(slot: ParkingSlot) {
-    const next = slot.status === 'Available' ? 'occupied' : 'available';
-    Alert.alert(
-      `Mark ${slot.slotNumber} as ${next}?`,
-      'This writes the same Firebase path a physical sensor would update.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: `Mark ${next}`, onPress: () => void toggle(slot) },
-      ],
-    );
-  }
-
   return (
     <Screen overlayTabBar>
       <View style={styles.header}>
         <Text style={styles.title}>Slots</Text>
         <Text style={styles.subtitle}>
-          Simulate ESP32 occupancy writes. Offline sensors stay hidden from drivers.
+          Live occupancy from the ESP32 IR sensors. Held bays are reserved for a driver heading there.
         </Text>
       </View>
 
@@ -157,13 +117,14 @@ export function AdminSlotsScreen() {
             <EmptyState
               icon="car-outline"
               title="No slots"
-              subtitle="Seed the demo lot from the dashboard first."
+              subtitle="Seed the live lot from the dashboard first."
             />
           )
         }
         renderItem={({ item }) => {
           const offline = isSensorFaulty(item.slotId);
           const open = item.status === 'Available';
+          const sensor = sensorForSlot(item.slotId);
           return (
             <GlassCard style={styles.card}>
               <View
@@ -197,23 +158,41 @@ export function AdminSlotsScreen() {
                     </View>
                   </View>
                   <StatusBadge
-                    label={offline ? 'Sensor offline' : item.status}
-                    tone={offline ? 'warning' : open ? 'available' : 'occupied'}
+                    label={
+                      offline
+                        ? 'Sensor offline'
+                        : item.status === 'Occupied'
+                          ? 'Occupied'
+                          : holdIsLive(item)
+                            ? 'Held'
+                            : 'Available'
+                    }
+                    tone={
+                      offline
+                        ? 'warning'
+                        : item.status === 'Occupied'
+                          ? 'occupied'
+                          : holdIsLive(item)
+                            ? 'warning'
+                            : 'available'
+                    }
                   />
                 </View>
-                {offline ? (
-                  <Text style={styles.hint}>
-                    Hidden from drivers until the sensor is marked healthy.
-                  </Text>
-                ) : null}
-                <Button
-                  title={open ? 'Mark occupied' : 'Mark available'}
-                  variant={open ? 'danger' : 'primary'}
-                  loading={busyId === item.slotId}
-                  disabled={offline}
-                  onPress={() => confirmToggle(item)}
-                  style={styles.action}
-                />
+                <Text style={styles.hint}>
+                  {offline
+                    ? 'IR sensor is offline. The pin stays on the map for drivers; occupancy will resume when the board reconnects.'
+                    : item.occupiedByName
+                      ? `Parked by ${item.occupiedByName}`
+                      : item.heldByName && holdIsLive(item)
+                        ? `Held by ${item.heldByName}`
+                        : sensor?.lastUpdated
+                          ? `IR live · updated ${new Date(sensor.lastUpdated).toLocaleTimeString([], {
+                              hour: 'numeric',
+                              minute: '2-digit',
+                              second: '2-digit',
+                            })}`
+                          : 'Waiting for the ESP32 to publish occupancy.'}
+                </Text>
               </View>
             </GlassCard>
           );
@@ -221,17 +200,4 @@ export function AdminSlotsScreen() {
       />
     </Screen>
   );
-}
-
-async function notifyWatchers(slot: ParkingSlot) {
-  const watchers = await listLotWatcherIds(slot.locationName);
-  if (watchers.length === 0) {
-    return;
-  }
-  await notifyUsersSlotAvailable({
-    userIds: watchers,
-    slotId: slot.slotId,
-    slotNumber: slot.slotNumber,
-    locationName: slot.locationName,
-  });
 }

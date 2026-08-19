@@ -47,19 +47,19 @@ export function AuthShell({
         hero: {
           marginHorizontal: -spacing.lg,
           paddingHorizontal: spacing.lg,
-          paddingBottom: 36,
-          borderBottomLeftRadius: 32,
-          borderBottomRightRadius: 32,
+          paddingBottom: 28,
+          borderBottomLeftRadius: 28,
+          borderBottomRightRadius: 28,
           overflow: 'hidden',
         },
         heroInner: {
           alignItems: 'center',
-          paddingTop: 12,
+          paddingTop: 4,
         },
         logoRing: {
-          width: 88,
-          height: 88,
-          borderRadius: 28,
+          width: 64,
+          height: 64,
+          borderRadius: 20,
           alignItems: 'center',
           justifyContent: 'center',
           backgroundColor: 'rgba(255,255,255,0.16)',
@@ -67,29 +67,29 @@ export function AuthShell({
           borderColor: 'rgba(255,255,255,0.28)',
         },
         logo: {
-          width: 64,
-          height: 64,
-          borderRadius: 20,
+          width: 48,
+          height: 48,
+          borderRadius: 16,
           backgroundColor: colors.white,
           alignItems: 'center',
           justifyContent: 'center',
         },
-        logoMark: { color: colors.primary, fontSize: 30, fontWeight: '800' },
+        logoMark: { color: colors.primary, fontSize: 22, fontWeight: '800' },
         brand: {
-          marginTop: 16,
-          fontSize: 34,
+          marginTop: 10,
+          fontSize: 26,
           fontWeight: '800',
           color: colors.white,
-          letterSpacing: -0.7,
+          letterSpacing: -0.5,
         },
         tag: {
-          marginTop: 8,
+          marginTop: 4,
           fontSize: 13,
           fontWeight: '600',
           color: 'rgba(255,255,255,0.82)',
           textAlign: 'center',
           lineHeight: 18,
-          paddingHorizontal: 24,
+          paddingHorizontal: 16,
         },
         compactTop: {
           flexDirection: 'row',
@@ -124,17 +124,17 @@ export function AuthShell({
           borderColor: colors.glassBorder,
         },
         heading: {
-          fontSize: 26,
+          fontSize: 22,
           fontWeight: '800',
           color: colors.text,
-          letterSpacing: -0.5,
+          letterSpacing: -0.4,
         },
         hint: {
-          marginTop: 6,
-          marginBottom: 20,
+          marginTop: 4,
+          marginBottom: 14,
           color: colors.textMuted,
-          lineHeight: 21,
-          fontSize: 15,
+          lineHeight: 20,
+          fontSize: 14,
         },
         footer: {
           marginTop: 22,
@@ -151,7 +151,11 @@ export function AuthShell({
 
   return (
     <View style={styles.root}>
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
+      >
         <ScrollView
           contentContainerStyle={[
             styles.content,
@@ -161,6 +165,8 @@ export function AuthShell({
             },
           ]}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          automaticallyAdjustKeyboardInsets
           showsVerticalScrollIndicator={false}
         >
           {isLogin ? (
@@ -168,7 +174,7 @@ export function AuthShell({
               colors={heroColors}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={[styles.hero, { paddingTop: insets.top + 28 }]}
+              style={[styles.hero, { paddingTop: insets.top + 12 }]}
             >
               <View style={styles.heroInner}>
                 <View style={styles.logoRing}>

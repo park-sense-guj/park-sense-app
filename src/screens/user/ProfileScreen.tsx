@@ -35,6 +35,7 @@ import {
 import {
   authenticateWithBiometrics,
   disableBiometrics,
+  displayBiometricLabel,
   enableBiometrics,
   getBiometricLabel,
   getStoredCredentials,
@@ -71,7 +72,8 @@ export function ProfileScreen() {
     firebaseUser?.providerData.some((provider) => provider.providerId === 'google.com'),
   );
   const [biometricOn, setBiometricOn] = useState(false);
-  const [biometricLabel, setBiometricLabel] = useState('Biometrics');
+  const [biometricLabelRaw, setBiometricLabel] = useState('Biometric');
+  const biometricLabel = displayBiometricLabel(biometricLabelRaw);
   const [hardware, setHardware] = useState(false);
   const [fullName, setFullName] = useState(profile?.fullName ?? '');
   const [email, setEmail] = useState(profile?.email ?? '');
@@ -382,14 +384,16 @@ export function ProfileScreen() {
     if (isGoogleAccount) {
       Alert.alert(
         `${biometricLabel} unavailable`,
-        'Google accounts sign in with Google. Face ID is only for email and password accounts.',
+        `${biometricLabel} is only for email and password accounts.`,
       );
       return;
     }
     if (!hardware) {
       Alert.alert(
         `${biometricLabel} unavailable`,
-        'Set up Face ID, Touch ID, or a fingerprint in device settings first.',
+        Platform.OS === 'ios'
+          ? 'Set up Face ID or Touch ID in Settings first.'
+          : 'Set up a fingerprint or face unlock in device settings first.',
       );
       return;
     }

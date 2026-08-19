@@ -5,12 +5,12 @@ import { Marker } from 'react-native-maps';
 import type { MarkerPressEvent } from 'react-native-maps';
 
 import { useTheme } from '../theme/ThemeProvider';
-import type { ParkingSlot } from '../types';
+import type { BayKind, ParkingSlot } from '../types';
 
 type Props = {
   slot: ParkingSlot;
   selected?: boolean;
-  isMine?: boolean;
+  kind?: BayKind;
   onPress: () => void;
 };
 
@@ -18,7 +18,7 @@ type Props = {
 const BOX = 44;
 const BUBBLE = 32;
 
-function ParkingMarkerComponent({ slot, selected, isMine, onPress }: Props) {
+function ParkingMarkerComponent({ slot, selected, kind = 'open', onPress }: Props) {
   const { colors } = useTheme();
   const [tracks, setTracks] = useState(true);
 
@@ -28,13 +28,25 @@ function ParkingMarkerComponent({ slot, selected, isMine, onPress }: Props) {
     return () => clearTimeout(timer);
     // Re-snapshot only when color meaning changes. Selection updates live on iOS;
     // Android needs a short refresh when selected flips.
-  }, [slot.status, isMine, Platform.OS === 'android' ? selected : false]);
+  }, [kind, Platform.OS === 'android' ? selected : false]);
 
-  const fill = isMine
-    ? colors.primary
-    : slot.status === 'Available'
-      ? colors.available
-      : colors.occupied;
+  const fill =
+    kind === 'mine' || kind === 'heldMine'
+      ? colors.primary
+      : kind === 'held'
+        ? colors.warning
+        : kind === 'offline'
+          ? colors.textMuted
+          : kind === 'open'
+            ? colors.available
+            : colors.occupied;
+
+  const iconName =
+    kind === 'mine' || kind === 'heldMine'
+      ? ('navigate' as const)
+      : kind === 'offline'
+        ? ('cloud-offline-outline' as const)
+        : ('car' as const);
 
   const styles = useMemo(
     () =>
@@ -79,13 +91,13 @@ function ParkingMarkerComponent({ slot, selected, isMine, onPress }: Props) {
       tappable
       tracksViewChanges={tracks}
       anchor={{ x: 0.5, y: 0.5 }}
-      zIndex={selected ? 1000 : isMine ? 100 : 1}
-      accessibilityLabel={`${slot.slotNumber}, ${isMine ? 'your spot' : slot.status}`}
+      zIndex={selected ? 1000 : kind === 'mine' || kind === 'heldMine' ? 100 : 1}
+      accessibilityLabel={`${slot.slotNumber}, ${kind}`}
     >
       <View style={styles.wrap} collapsable={false}>
         <View style={styles.ring} pointerEvents="none" />
         <View style={styles.bubble} pointerEvents="none" collapsable={false}>
-          <Ionicons name={isMine ? 'navigate' : 'car'} size={15} color={colors.white} />
+          <Ionicons name={iconName} size={15} color={colors.white} />
         </View>
       </View>
     </Marker>

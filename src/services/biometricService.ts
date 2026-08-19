@@ -6,18 +6,30 @@ const ENABLED_KEY = 'parksense.biometric.enabled';
 const EMAIL_KEY = 'parksense.biometric.email';
 const PASSWORD_KEY = 'parksense.biometric.password';
 
+/** Face ID / Touch ID are iOS-only names. Android always shows Biometric. */
+export function displayBiometricLabel(label?: string | null): string {
+  if (Platform.OS !== 'ios') {
+    return 'Biometric';
+  }
+  return label || 'Face ID';
+}
+
 export async function getBiometricLabel(): Promise<string> {
+  return displayBiometricLabel(await resolveIosBiometricLabel());
+}
+
+async function resolveIosBiometricLabel(): Promise<string> {
+  if (Platform.OS !== 'ios') {
+    return 'Biometric';
+  }
   const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
-  if (types.includes(2 as LocalAuthentication.AuthenticationType)) {
+  if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
     return 'Face ID';
   }
   if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
-    return Platform.OS === 'ios' ? 'Touch ID' : 'Fingerprint';
+    return 'Touch ID';
   }
-  if (types.includes(LocalAuthentication.AuthenticationType.IRIS)) {
-    return 'Iris unlock';
-  }
-  return Platform.OS === 'ios' ? 'Face ID' : 'Biometrics';
+  return 'Face ID';
 }
 
 export async function isBiometricAvailable(): Promise<boolean> {

@@ -14,7 +14,14 @@ import { radius } from '../../config/theme';
 import { useNotifications } from '../../hooks/useNotifications';
 import { useParkingSlots } from '../../hooks/useParkingSlots';
 import type { AdminStackParamList, AdminTabParamList } from '../../navigation/types';
-import { seedDemoLot, seedDemoLotIfEmpty } from '../../services/seedService';
+import {
+  readDeviceLotPlacement,
+} from '../../services/lotPlacementService';
+import {
+  relocateLiveLot,
+  seedDemoLot,
+  seedDemoLotIfEmpty,
+} from '../../services/seedService';
 import { useAuthStore } from '../../store/authStore';
 import { useTheme } from '../../theme/ThemeProvider';
 
@@ -180,16 +187,20 @@ export function AdminDashboardScreen() {
   async function seed(force: boolean) {
     setBusy(true);
     try {
+      const placement = await readDeviceLotPlacement();
       if (force) {
-        await seedDemoLot();
-        Alert.alert('Demo lot ready', 'Ten simulated slots were written to Firebase.');
-      } else {
-        const created = await seedDemoLotIfEmpty();
+        await seedDemoLot(placement);
         Alert.alert(
-          created ? 'Demo lot seeded' : 'Slots already exist',
+          'Live lot ready',
+          `A-01, A-02, and A-03 are now at your location (${placement.locationName}). Cover an IR sensor to mark Taken.`,
+        );
+      } else {
+        const created = await seedDemoLotIfEmpty(placement);
+        Alert.alert(
+          created ? 'Live lot seeded' : 'Slots already exist',
           created
-            ? 'VU Main Campus Lot is now live on the map.'
-            : 'The database already has parking slots.',
+            ? `A-01, A-02, and A-03 are on the map at ${placement.locationName}.`
+            : 'The database already has parking slots. Use Place pins here to move them off the old Lahore demo, or Reset to keep only the 3 ESP32 bays.',
         );
       }
     } catch (error) {
@@ -199,13 +210,40 @@ export function AdminDashboardScreen() {
     }
   }
 
+  async function placeHere() {
+    setBusy(true);
+    try {
+      const placement = await readDeviceLotPlacement();
+      const count = await relocateLiveLot(placement);
+      Alert.alert(
+        'Pins moved',
+        `${count} live bays are now at ${placement.locationName}. Open/Taken still comes from the IR sensors.`,
+      );
+    } catch (error) {
+      Alert.alert('Could not move pins', error instanceof Error ? error.message : 'Unknown error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function confirmReset() {
     Alert.alert(
-      'Reset the demo lot?',
-      'This replaces current slot data with the 10-slot campus sample.',
+      'Replace mock lot with live hardware?',
+      'This keeps only A-01, A-02, A-03 and places those pins at your current GPS — not the old Lahore campus sample.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Reset lot', onPress: () => void seed(true) },
+        { text: 'Use 3 live bays', onPress: () => void seed(true) },
+      ],
+    );
+  }
+
+  function confirmPlaceHere() {
+    Alert.alert(
+      'Place pins at your GPS?',
+      'This moves the live ESP32 bays to where you are standing. Occupancy is not changed.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Move pins here', onPress: () => void placeHere() },
       ],
     );
   }
@@ -290,7 +328,7 @@ export function AdminDashboardScreen() {
           <Text style={styles.chartsHint}>
             {loading
               ? 'Loading live counts…'
-              : `${stats.onlineTotal} online pins · ${stats.offlineSensors} hidden from drivers`}
+              : `${stats.onlineTotal} live pins · ${stats.offlineSensors} offline (still on the map)`}
           </Text>
         </GlassCard>
 
@@ -321,10 +359,10 @@ export function AdminDashboardScreen() {
               </View>
               <View style={styles.offlineHeaderCopy}>
                 <Text style={styles.offlineTitle}>
-                  {offlineSlots.length} hidden from drivers
+                  {offlineSlots.length} sensor{offlineSlots.length === 1 ? '' : 's'} offline
                 </Text>
                 <Text style={styles.offlineHint}>
-                  Offline sensors — pins stay off the driver map until restored.
+                  Driver pins stay visible in grey until those ESP32s heartbeat again.
                 </Text>
               </View>
             </View>
@@ -347,17 +385,24 @@ export function AdminDashboardScreen() {
         ) : null}
 
         <GlassCard style={styles.note}>
-          <Text style={styles.noteTitle}>IoT simulator</Text>
+          <Text style={styles.noteTitle}>Live ESP32 nodes</Text>
           <Text style={styles.noteBody}>
             {slots.length === 0
-              ? 'No hardware yet. Seed the demo lot to simulate ESP32 writes.'
-              : 'Toggling a slot on Slots updates the same Firebase path an ESP32 will use. Marking a sensor faulty hides that pin from drivers and creates an admin alert.'}
+              ? 'No bays yet. Seed the 3-bay hardware lot at your GPS, then keep the ESP32s on Wi-Fi.'
+              : 'Pins used to sit on a Lahore campus sample. Place them here so navigation matches the sensors. Cover an IR module to show Taken; uncover to show Open. Occupancy is not toggled in the app.'}
           </Text>
         </GlassCard>
 
-        <Button title="Seed demo lot if empty" loading={busy} onPress={() => void seed(false)} />
+        <Button title="Place pins at my location" loading={busy} onPress={confirmPlaceHere} />
         <Button
-          title="Reset demo lot"
+          title="Seed live lot if empty"
+          variant="secondary"
+          loading={busy}
+          onPress={() => void seed(false)}
+          style={styles.spaced}
+        />
+        <Button
+          title="Reset to 3 live bays"
           variant="secondary"
           loading={busy}
           onPress={confirmReset}

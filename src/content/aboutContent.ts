@@ -27,11 +27,11 @@ export const ABOUT_SHEETS: AboutSheet[] = [
       },
       {
         heading: '3 · Park',
-        body: 'When you arrive, tap I’m parked. That marks the slot taken on the map so others don’t head to an occupied space.',
+        body: 'Stand at the bay and cover the IR sensor. The pin turns Taken and Activity starts a session for you automatically. If the sensor never fires, no session is created.',
       },
       {
         heading: '4 · Leave',
-        body: 'When you go, tap Leave slot. The pin turns green again, your visit is saved in Activity, and anyone watching that lot can be notified.',
+        body: 'When you uncover the IR sensor, the pin turns Open and your session ends. Anyone watching that lot can be notified.',
       },
     ],
   },
@@ -43,23 +43,23 @@ export const ABOUT_SHEETS: AboutSheet[] = [
     sections: [
       {
         heading: 'How do I complete a parking visit?',
-        body: 'Find a green pin → Go there → I’m parked when you arrive → Leave slot when you leave. Activity keeps a record of finished visits.',
+        body: 'Tap a green Open pin, then Go there. That bay is held for you. Cover its IR sensor to start the session. Uncover the sensor when you leave — Activity records the visit. Covering a different bay does nothing.',
       },
       {
         heading: 'What does Watch lot do?',
         body: 'Watching is per lot, not a single pin. You’ll get an alert when any space in that lot becomes available—useful when everything looks taken.',
       },
       {
-        heading: 'Why did a pin disappear?',
-        body: 'Admins can mark a sensor faulty. Offline slots are hidden from the driver map until the sensor is restored, so you don’t navigate to a dead bay.',
+        heading: 'Why is a pin grey?',
+        body: 'Grey means that bay’s ESP32 is offline or marked faulty. The pin stays on the map so the lot layout does not vanish. Pick a green Open pin to park.',
       },
       {
         heading: 'Where are Alerts?',
         body: 'Open the bell on Home or Activity. Tapping an alert marks it read; use Open Home to jump back to the map without stacking screens.',
       },
       {
-        heading: 'Face ID / biometrics',
-        body: 'After you log out, you can sign back in faster with Face ID or fingerprint on supported devices. This is unavailable for Google sign-in accounts.',
+        heading: 'Biometric sign-in',
+        body: 'After you log out, you can sign back in faster with Face ID on iPhone or fingerprint / face unlock on Android. This is unavailable for Google sign-in accounts.',
       },
       {
         heading: 'Google accounts',

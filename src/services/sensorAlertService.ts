@@ -20,7 +20,7 @@ export async function notifyAdminsSensorFault(input: {
       createNotification({
         userId: admin.userId,
         slotId: input.slotId,
-        message: `Sensor offline: ${input.slotNumber} (${input.sensorId}) was marked faulty. That pin is hidden from drivers until it’s healthy again.`,
+        message: `Sensor offline: ${input.slotNumber} (${input.sensorId}) was marked faulty. Drivers still see a grey Offline pin until it’s healthy again.`,
       }),
     ),
   );

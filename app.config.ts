@@ -59,6 +59,13 @@ const config: ExpoConfig = {
     'expo-secure-store',
     '@react-native-google-signin/google-signin',
     [
+      'react-native-maps',
+      {
+        androidGoogleMapsApiKey: mapsAndroid,
+        iosGoogleMapsApiKey: mapsIos,
+      },
+    ],
+    [
       'expo-splash-screen',
       {
         backgroundColor: '#0F766E',
