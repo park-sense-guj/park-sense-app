@@ -14,7 +14,7 @@ export const ABOUT_SHEETS: AboutSheet[] = [
   {
     id: 'howItWorks',
     title: 'How ParkSense works',
-    subtitle: 'Replay the 4-step walkthrough',
+    subtitle: 'Replay the walkthrough',
     icon: 'book-outline',
     sections: [
       {
@@ -22,8 +22,8 @@ export const ABOUT_SHEETS: AboutSheet[] = [
         body: 'Open Home to see live pins. Green means open, red means taken. Open and taken counts update as drivers park and leave.',
       },
       {
-        heading: '2 · Navigate or watch',
-        body: 'Tap an open pin and choose Go there for directions. If a lot is full, use Watch lot to get an alert when any space there becomes free.',
+        heading: '2 · Hold and show your pass',
+        body: 'Tap an open pin and choose Go there. The bay is held for you and an arrival QR is created. Show that live code at reception so staff can confirm you are the driver who reserved the space.',
       },
       {
         heading: '3 · Park',
@@ -43,7 +43,11 @@ export const ABOUT_SHEETS: AboutSheet[] = [
     sections: [
       {
         heading: 'How do I complete a parking visit?',
-        body: 'Tap a green Open pin, then Go there. That bay is held for you. Cover its IR sensor to start the session. Uncover the sensor when you leave — Activity records the visit. Covering a different bay does nothing.',
+        body: 'Tap a green Open pin, then Go there. Show the arrival QR at reception. Cover the IR sensor to start the session. Uncover the sensor when you leave — Activity records the visit. Covering a different bay does nothing.',
+      },
+      {
+        heading: 'What is the arrival QR?',
+        body: 'Each hold creates a one-time pass. Reception scans it to confirm you are the driver who reserved that bay. Old screenshots, expired holds, and cancelled passes are rejected. If the hold timed out but the bay is still free, reception can restore it at the gate.',
       },
       {
         heading: 'What does Watch lot do?',
@@ -83,7 +87,7 @@ export const ABOUT_SHEETS: AboutSheet[] = [
       },
       {
         heading: 'Realtime Database',
-        body: 'Profile details, profile photo data, parking history, alerts, lot watch preferences, and live slot status sync through Firebase Realtime Database for the campus demo lot.',
+        body: 'Profile details, profile photo data, parking history, alerts, lot watch preferences, arrival passes, and live slot status sync through Firebase Realtime Database for the campus demo lot.',
       },
       {
         heading: 'Location',

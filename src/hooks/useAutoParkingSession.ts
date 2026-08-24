@@ -19,7 +19,7 @@ export function useAutoParkingSession() {
   const busy = useRef(false);
 
   useEffect(() => {
-    if (!profile || profile.role === 'admin' || !isOnline || busy.current) {
+    if (!profile || profile.role === 'admin' || profile.role === 'receptionist' || !isOnline || busy.current) {
       return;
     }
 

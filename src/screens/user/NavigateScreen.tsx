@@ -490,7 +490,7 @@ export function NavigateScreen({ navigation, route }: Props) {
       return 'This space was taken by someone else. Go back and pick an open pin.';
     }
     if (headingHere) {
-      return 'This bay is held for you. Cover the IR sensor when you park — no extra tap.';
+      return 'This bay is held for you. Show the arrival QR at reception, then cover the IR sensor when you park.';
     }
     return 'Start guidance for turn-by-turn directions to this space.';
   })();
@@ -673,12 +673,21 @@ export function NavigateScreen({ navigation, route }: Props) {
 
         <View style={styles.actions}>
           {flowStep === 'drive' ? (
-            <Button
-              title={guiding ? 'Stop guidance' : 'Start guidance'}
-              onPress={onToggleGuidance}
-              loading={routeLoading && !routeResult}
-              disabled={sensorOffline || (!location && !denied)}
-            />
+            <>
+              {headingHere ? (
+                <Button
+                  title="Show arrival QR"
+                  variant="secondary"
+                  onPress={() => navigation.navigate('ArrivalPass', { slot })}
+                />
+              ) : null}
+              <Button
+                title={guiding ? 'Stop guidance' : 'Start guidance'}
+                onPress={onToggleGuidance}
+                loading={routeLoading && !routeResult}
+                disabled={sensorOffline || (!location && !denied)}
+              />
+            </>
           ) : (
             <Button title="Back to map" onPress={() => navigation.goBack()} />
           )}

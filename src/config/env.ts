@@ -17,6 +17,10 @@ export const env = {
   googleWebClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '',
   googleIosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? '',
   adminEmail: (process.env.EXPO_PUBLIC_ADMIN_EMAIL ?? 'admin@parksense.app').toLowerCase(),
+  receptionistEmails: (process.env.EXPO_PUBLIC_RECEPTIONIST_EMAIL ?? 'receptionist@parksense.app')
+    .split(',')
+    .map((email: string) => email.trim().toLowerCase())
+    .filter(Boolean),
 };
 
 export function hasFirebaseConfig(): boolean {

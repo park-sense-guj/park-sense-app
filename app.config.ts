@@ -31,7 +31,7 @@ const config: ExpoConfig = {
       NSPhotoLibraryUsageDescription:
         'ParkSense uses your photos so you can set a profile picture.',
       NSCameraUsageDescription:
-        'ParkSense uses the camera so you can take a profile picture.',
+        'ParkSense uses the camera so you can take a profile picture and so reception can scan arrival QR codes.',
     },
   },
   android: {
@@ -93,6 +93,17 @@ const config: ExpoConfig = {
         microphonePermission: false,
       },
     ],
+    [
+      'expo-camera',
+      {
+        cameraPermission:
+          'ParkSense uses the camera so reception can scan arrival QR codes and so you can take a profile picture.',
+        microphonePermission: false,
+        recordAudioAndroid: false,
+        barcodeScannerEnabled: true,
+      },
+    ],
+    './plugins/withSwiftUICoreLinkFix',
   ],
   extra: {
     firebaseProjectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,

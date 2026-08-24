@@ -1,0 +1,200 @@
+diff --git a/ios/Unsafe/RCTPackagerConnection+EXDevLauncherPackagerConnectionInterceptor.m b/ios/Unsafe/RCTPackagerConnection+EXDevLauncherPackagerConnectionInterceptor.m
+--- a/ios/Unsafe/RCTPackagerConnection+EXDevLauncherPackagerConnectionInterceptor.m
++++ b/ios/Unsafe/RCTPackagerConnection+EXDevLauncherPackagerConnectionInterceptor.m
+@@ -1,89 +1,10 @@
+ // Copyright 2015-present 650 Industries. All rights reserved.
+ 
+ /**
+- * This file is compiled without ARC - the memory needs to be managed by hand.
++ * Prebuilt React-Core (RN 0.81+) does not export RCTPackagerConnection.
++ * Compiling the original category makes Debug device builds fail:
++ *   Undefined symbols: _OBJC_CLASS_$_RCTPackagerConnection
++ * Metro / expo-dev-client still work without this interceptor.
+  */
+ 
+ #import <EXDevLauncher/RCTPackagerConnection+EXDevLauncherPackagerConnectionInterceptor.h>
+-#import <EXDevLauncher/EXDevLauncherController.h>
+-
+-#import <React/RCTConstants.h>
+-#import <React/RCTReconnectingWebSocket.h>
+-
+-#import <objc/runtime.h>
+-#import <mutex>
+-
+-#if RCT_DEV
+-
+-static RCTReconnectingWebSocket *createSocketForURL(NSURL * url)
+-{
+-  NSURLComponents *const components = [NSURLComponents new];
+-  components.host = [url host];
+-  NSString *scheme = [url scheme];
+-  components.scheme = ([scheme isEqualToString:@"https"] || [scheme isEqualToString:@"exps"]) ? @"https" : @"http";
+-  components.port =  [url port];
+-  components.path = @"/message";
+-  components.queryItems = @[[NSURLQueryItem queryItemWithName:@"role" value:RCTPlatformName]];
+-  static dispatch_queue_t queue;
+-  static dispatch_once_t onceToken;
+-  dispatch_once(&onceToken, ^{
+-    queue = dispatch_queue_create("com.facebook.RCTPackagerConnectionQueue", DISPATCH_QUEUE_SERIAL);
+-  });
+-
+-  RCTReconnectingWebSocket *webSocket = [[RCTReconnectingWebSocket alloc] initWithURL:components.URL queue:queue];
+-  [components release];
+-  return [webSocket autorelease]; // adds to ARC
+-}
+-
+-@implementation RCTPackagerConnection (EXDevLauncherPackagerConnectionInterceptor)
+-
+-/**
+- * Sets the WebSocket URL.
+- */
+-- (void)setSocketConnectionURL:(NSURL *)url
+-{
+-  // Mutex isn't an objective-c object - [self valueForKey:@"_mutex"] will fail.
+-  // The other solution requires `object_getInstanceVariable` which doesn't work with ARC.
+-  // That's the only solution to get private variables that comes from cpp.
+-  Ivar mutexVar = object_getInstanceVariable(self, "_mutex", NULL);
+-  ptrdiff_t mutexOffset = ivar_getOffset(mutexVar);
+-  unsigned char* selfPtr = (unsigned char *)(__bridge void*)self;
+-  std::mutex *mutex = (std::mutex *)(selfPtr + mutexOffset);
+-  
+-  RCTReconnectingWebSocket *oldSocket = (RCTReconnectingWebSocket *)[self valueForKey:@"_socket"];
+-
+-  std::lock_guard<std::mutex> l(*mutex);
+-  if (oldSocket == nil) {
+-    return; // already stopped
+-  }
+-
+-  [self setValue:@NO forKey:@"_socketConnected"];
+-
+-  oldSocket.delegate = nil;
+-  [oldSocket stop];
+-  
+-  RCTReconnectingWebSocket *newSocket = createSocketForURL(url);
+-  newSocket.delegate = (id<RCTReconnectingWebSocketDelegate>)self;
+-  [newSocket start];
+-
+-  [self setValue:newSocket forKey:@"_socket"];
+-
+-  static dispatch_once_t onceToken;
+-  dispatch_once(&onceToken, ^{
+-    [[NSNotificationCenter defaultCenter] addObserverForName:@"RCTTriggerReloadCommandNotification"
+-                                                      object:nil
+-                                                       queue:[NSOperationQueue mainQueue]
+-                                                  usingBlock:^(NSNotification *_Nonnull __unused note) {
+-      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+-        NSURL *bundleUrl = [EXDevLauncherController sharedInstance].sourceUrl;
+-        if (bundleUrl && ![bundleUrl.scheme isEqualToString:@"file"]) {
+-          [self setSocketConnectionURL:bundleUrl];
+-        }
+-      });
+-    }];
+-  });
+-}
+-
+-@end
+-
+-#endif
+
+diff --git a/ios/DevLauncherNetworkInterceptor.swift b/ios/DevLauncherNetworkInterceptor.swift
+index 5a2f8b9..bed95de 100644
+--- a/ios/DevLauncherNetworkInterceptor.swift
++++ b/ios/DevLauncherNetworkInterceptor.swift
+@@ -3,84 +3,13 @@
+ import ExpoModulesCore
+ import React
+ 
+-#if DEBUG && EX_DEV_CLIENT_NETWORK_INSPECTOR
+-
+-var isHookInstalled = false
+-
+-@objc(EXDevLauncherNetworkInterceptor)
+-public final class DevLauncherNetworkInterceptor: NSObject, ExpoRequestCdpInterceptorDelegate {
+-  private let metroConnection: RCTReconnectingWebSocket
+-
+-  @objc
+-  public init(bundleUrl: URL) {
+-    assert(Thread.isMainThread)
+-    self.metroConnection = RCTReconnectingWebSocket(
+-      url: Self.createNetworkInspectorUrl(bundleUrl: bundleUrl),
+-      queue: .main)
+-    self.metroConnection.start()
+-    super.init()
+-
+-    if !isHookInstalled {
+-      EXDevLauncherUtils.swizzleClassMethod(
+-        selector: #selector(getter: URLSessionConfiguration.default),
+-        withSelector: #selector(URLSessionConfiguration.EXDevLauncher_urlSessionConfiguration),
+-        forClass: URLSessionConfiguration.self
+-      )
+-      isHookInstalled = true
+-    }
+-
+-    ExpoRequestCdpInterceptor.shared.setDelegate(self)
+-  }
+-
+-  deinit {
+-    assert(Thread.isMainThread)
+-    ExpoRequestCdpInterceptor.shared.setDelegate(nil)
+-    self.metroConnection.stop()
+-  }
+-
+-  private static func createNetworkInspectorUrl(bundleUrl: URL) -> URL {
+-    let host = bundleUrl.host ?? "localhost"
+-    let port = bundleUrl.port ?? 8081
+-    let scheme = bundleUrl.scheme == "https" ? "wss" : "ws"
+-    let urlString = "\(scheme)://\(host):\(port)/inspector/network"
+-    guard let url = URL(string: urlString) else {
+-      fatalError("Invalid network inspector URL: \(urlString)")
+-    }
+-    return url
+-  }
+-
+-  // MARK: ExpoRequestCdpInterceptorDelegate implementations
+-
+-  public func dispatch(_ event: String) {
+-    self.metroConnection.send(Data(event.utf8))
+-  }
+-}
+-
+-extension URLSessionConfiguration {
+-  private typealias GetterFunc = @convention(c) (AnyObject, Selector) -> URLSessionConfiguration
+-
+-  /**
+-   Swizzled `URLSessionConfiguration.default` for us to add the `EXDevLauncherRequestLoggerProtocol` interceptor
+-   */
+-  @objc
+-  static func EXDevLauncher_urlSessionConfiguration() -> URLSessionConfiguration {
+-    guard let config = try? EXDevLauncherUtils.invokeOriginalClassMethod(
+-      selector: #selector(getter: URLSessionConfiguration.default),
+-      forClass: URLSessionConfiguration.self
+-    ) as? URLSessionConfiguration else {
+-      fatalError("Unable to get original URLSessionConfiguration.default")
+-    }
+-    var protocolClasses: [AnyClass] = config.protocolClasses ?? []
+-    if !protocolClasses.contains(where: { $0 == ExpoRequestInterceptorProtocol.self }) {
+-      protocolClasses.insert(ExpoRequestInterceptorProtocol.self, at: 0)
+-    }
+-    config.protocolClasses = protocolClasses
+-    return config
+-  }
+-}
+-
+-#else
+-
++/**
++ * Prebuilt React-Core (RN 0.81+) does not export RCTReconnectingWebSocket.
++ * The DEBUG + EX_DEV_CLIENT_NETWORK_INSPECTOR implementation links that class
++ * and fails device builds with:
++ *   Undefined symbols: _OBJC_CLASS_$_RCTReconnectingWebSocket
++ * Metro / expo-dev-client still work; Chrome network inspect in the launcher is disabled.
++ */
+ @objc(EXDevLauncherNetworkInterceptor)
+ public final class DevLauncherNetworkInterceptor: NSObject {
+   @objc
+@@ -88,5 +17,3 @@ public final class DevLauncherNetworkInterceptor: NSObject {
+     super.init()
+   }
+ }
+-
+-#endif

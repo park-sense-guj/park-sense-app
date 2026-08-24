@@ -95,6 +95,16 @@ export async function startParkingSession(
         bookingDate: new Date(now).toISOString().slice(0, 10),
       };
       const created = await push(ref(db, `parkingHistory/${userId}`), record);
+      const token = claimed.holdToken;
+      if (token) {
+        const passSnap = await get(ref(db, `parkingPasses/${token}`));
+        if (passSnap.exists()) {
+          await update(ref(db, `parkingPasses/${token}`), {
+            status: 'consumed',
+            consumedAt: now,
+          });
+        }
+      }
       return created.key ?? '';
     })(),
     15_000,
@@ -127,6 +137,11 @@ export async function endParkingSession(userId: string, historyId: string): Prom
         [`parkingSlots/${session.slotId}/heldByUserId`]: null,
         [`parkingSlots/${session.slotId}/heldByName`]: null,
         [`parkingSlots/${session.slotId}/heldUntil`]: null,
+        [`parkingSlots/${session.slotId}/holdToken`]: null,
+        [`parkingSlots/${session.slotId}/holdCheckIn`]: null,
+        [`parkingSlots/${session.slotId}/checkedInAt`]: null,
+        [`parkingSlots/${session.slotId}/checkedInBy`]: null,
+        [`parkingSlots/${session.slotId}/checkedInByName`]: null,
       });
 
       const watchers = (await listLotWatcherIds(session.locationName)).filter((id) => id !== userId);

@@ -41,6 +41,7 @@ export function MapScreen() {
   const isOnline = useConnectivityStore((state) => state.isOnline);
   const fullName = useAuthStore((state) => state.profile?.fullName);
   const photoUrl = useAuthStore((state) => state.profile?.photoUrl);
+  const userEmail = useAuthStore((state) => state.profile?.email);
   const userId = useAuthStore((state) => state.profile?.userId);
   const preferredLocation = useAuthStore((state) => state.profile?.preferredLocation);
   const { unreadCount } = useNotifications(userId);
@@ -108,7 +109,7 @@ export function MapScreen() {
           backgroundColor: Platform.OS === 'android' ? 'transparent' : colors.mapSurface,
         },
         mapCanvas: {
-          ...StyleSheet.absoluteFillObject,
+          ...StyleSheet.absoluteFill,
           width: '100%',
           height: '100%',
         },
@@ -333,9 +334,12 @@ export function MapScreen() {
     }
     setHolding(true);
     try {
-      await holdBay(userId, fullName, slot.slotId);
+      await holdBay(userId, fullName, slot.slotId, {
+        email: userEmail,
+        photoUrl,
+      });
       playSuccessFeedback();
-      navigation.navigate('Navigate', { slot });
+      navigation.navigate('ArrivalPass', { slot });
     } catch (error) {
       playErrorFeedback();
       Alert.alert('Could not hold this bay', readableNetworkError(error, 'Pick another open pin.'));
@@ -402,12 +406,12 @@ export function MapScreen() {
         }
         if (selectedKind === 'heldMine') {
           return {
-            hint: 'This bay is held for you. Drive there, then cover the IR sensor to start your session.',
-            primaryTitle: 'Continue',
+            hint: 'This bay is held for you. Show the arrival QR at reception, then cover the IR sensor when you park.',
+            primaryTitle: 'Show QR pass',
             primaryVariant: 'primary' as const,
             primaryLoading: false,
             primaryDisabled: releasingHold,
-            onPrimary: () => navigation.navigate('Navigate', { slot: selected }),
+            onPrimary: () => navigation.navigate('ArrivalPass', { slot: selected }),
             secondaryTitle: 'End hold',
             secondaryVariant: 'danger' as const,
             secondaryLoading: releasingHold,

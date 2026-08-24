@@ -23,7 +23,14 @@ import { releaseHoldsForUser } from './parkingHoldService';
 import { deleteUserNotifications } from './notificationService';
 
 function roleForEmail(email: string): UserRole {
-  return email.trim().toLowerCase() === env.adminEmail ? 'admin' : 'user';
+  const normalized = email.trim().toLowerCase();
+  if (normalized === env.adminEmail) {
+    return 'admin';
+  }
+  if (env.receptionistEmails.includes(normalized)) {
+    return 'receptionist';
+  }
+  return 'user';
 }
 
 export async function registerUser(input: {
@@ -144,6 +151,10 @@ export async function ensureUserProfile(params: {
       (!existing.fullName || existing.fullName === 'ParkSense User')
     ) {
       patch.fullName = params.fullName.trim();
+    }
+    const nextRole = roleForEmail(params.email);
+    if (existing.role !== nextRole && nextRole !== 'user') {
+      patch.role = nextRole;
     }
     if (Object.keys(patch).length > 0) {
       await update(profileRef, patch);

@@ -16,6 +16,7 @@ export type UserTabParamList = {
 export type UserStackParamList = {
   UserTabs: NavigatorScreenParams<UserTabParamList>;
   Navigate: { slot: ParkingSlot };
+  ArrivalPass: { slot: ParkingSlot };
   Alerts: undefined;
 };
 
@@ -31,8 +32,21 @@ export type AdminStackParamList = {
   Alerts: undefined;
 };
 
+export type ReceptionistTabParamList = {
+  ScanTab: undefined;
+  ArrivalsTab: undefined;
+  ProfileTab: undefined;
+};
+
+export type ReceptionistStackParamList = {
+  ReceptionistTabs: NavigatorScreenParams<ReceptionistTabParamList>;
+  PassDetail: { token: string };
+  Alerts: undefined;
+};
+
 export type RootStackParamList = {
   Auth: NavigatorScreenParams<AuthStackParamList>;
   User: NavigatorScreenParams<UserStackParamList>;
   Admin: NavigatorScreenParams<AdminStackParamList>;
+  Receptionist: NavigatorScreenParams<ReceptionistStackParamList>;
 };
