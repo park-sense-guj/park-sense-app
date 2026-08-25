@@ -66,7 +66,11 @@ export async function startParkingSession(
         if (current.status !== 'Occupied') {
           return;
         }
-        if (!holdIsLive({ ...current, slotId: slot.slotId }, Date.now()) || current.heldByUserId !== userId) {
+        if (
+          !holdIsLive({ ...current, slotId: slot.slotId }, Date.now()) ||
+          current.heldByUserId !== userId ||
+          current.holdCheckIn !== 'admitted'
+        ) {
           return;
         }
         if (current.occupiedByUserId && current.occupiedByUserId !== userId) {
@@ -82,7 +86,7 @@ export async function startParkingSession(
 
       const claimed = claim.snapshot.val() as Omit<ParkingSlot, 'slotId'> | null;
       if (!claim.committed || claimed?.occupiedByUserId !== userId) {
-        throw new Error('Hold this bay first, then cover the IR sensor.');
+        throw new Error('Scan the QR on this bay, then cover the IR sensor.');
       }
 
       const now = Date.now();
@@ -95,16 +99,6 @@ export async function startParkingSession(
         bookingDate: new Date(now).toISOString().slice(0, 10),
       };
       const created = await push(ref(db, `parkingHistory/${userId}`), record);
-      const token = claimed.holdToken;
-      if (token) {
-        const passSnap = await get(ref(db, `parkingPasses/${token}`));
-        if (passSnap.exists()) {
-          await update(ref(db, `parkingPasses/${token}`), {
-            status: 'consumed',
-            consumedAt: now,
-          });
-        }
-      }
       return created.key ?? '';
     })(),
     15_000,

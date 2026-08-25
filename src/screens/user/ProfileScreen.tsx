@@ -92,9 +92,7 @@ export function ProfileScreen() {
   const [deleteError, setDeleteError] = useState('');
   const [deleteBusy, setDeleteBusy] = useState(false);
   const isAdmin = profile?.role === 'admin';
-  const isReceptionist = profile?.role === 'receptionist';
-  const roleLabel =
-    profile?.role === 'admin' ? 'Admin' : profile?.role === 'receptionist' ? 'Receptionist' : 'Driver';
+  const roleLabel = profile?.role === 'admin' ? 'Admin' : 'Driver';
   const initials = initialsFromName(profile?.fullName);
   const nameDirty = fullName.trim() !== (profile?.fullName ?? '');
   const emailDirty = email.trim().toLowerCase() !== (profile?.email ?? '');
@@ -566,7 +564,7 @@ export function ProfileScreen() {
             </Pressable>
             <Text style={styles.heroName}>{profile?.fullName ?? 'ParkSense User'}</Text>
             <Text style={styles.heroEmail}>{profile?.email ?? ''}</Text>
-            {isAdmin || isReceptionist ? (
+            {isAdmin ? (
               <Text style={styles.photoHint}>{roleLabel}</Text>
             ) : null}
             {photoBusy ? <Text style={styles.photoHint}>Saving photo…</Text> : null}

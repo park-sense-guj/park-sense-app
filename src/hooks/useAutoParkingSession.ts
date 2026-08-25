@@ -19,7 +19,7 @@ export function useAutoParkingSession() {
   const busy = useRef(false);
 
   useEffect(() => {
-    if (!profile || profile.role === 'admin' || profile.role === 'receptionist' || !isOnline || busy.current) {
+    if (!profile || profile.role === 'admin' || !isOnline || busy.current) {
       return;
     }
 
@@ -37,7 +37,11 @@ export function useAutoParkingSession() {
     }
 
     const held = slots.find(
-      (slot) => holdIsLive(slot) && slot.heldByUserId === profile.userId && slot.status === 'Occupied',
+      (slot) =>
+        holdIsLive(slot) &&
+        slot.heldByUserId === profile.userId &&
+        slot.holdCheckIn === 'admitted' &&
+        slot.status === 'Occupied',
     );
     if (!held) {
       return;

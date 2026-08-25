@@ -31,7 +31,7 @@ const config: ExpoConfig = {
       NSPhotoLibraryUsageDescription:
         'ParkSense uses your photos so you can set a profile picture.',
       NSCameraUsageDescription:
-        'ParkSense uses the camera so you can take a profile picture and so reception can scan arrival QR codes.',
+        'ParkSense uses the camera so you can take a profile picture and scan the QR code on a parking bay.',
     },
   },
   android: {
@@ -97,7 +97,7 @@ const config: ExpoConfig = {
       'expo-camera',
       {
         cameraPermission:
-          'ParkSense uses the camera so reception can scan arrival QR codes and so you can take a profile picture.',
+          'ParkSense uses the camera so you can scan the QR code on a parking bay and take a profile picture.',
         microphonePermission: false,
         recordAudioAndroid: false,
         barcodeScannerEnabled: true,

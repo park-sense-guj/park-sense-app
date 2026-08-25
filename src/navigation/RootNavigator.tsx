@@ -15,12 +15,10 @@ import { AdminSensorsScreen } from '../screens/admin/AdminSensorsScreen';
 import { AdminSlotsScreen } from '../screens/admin/AdminSlotsScreen';
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { RegisterScreen } from '../screens/auth/RegisterScreen';
-import { ReceptionistArrivalsScreen } from '../screens/receptionist/ReceptionistArrivalsScreen';
-import { ReceptionistPassScreen } from '../screens/receptionist/ReceptionistPassScreen';
-import { ReceptionistScanScreen } from '../screens/receptionist/ReceptionistScanScreen';
+import { AdminBayQrScreen } from '../screens/admin/AdminBayQrScreen';
 import { HistoryScreen } from '../screens/user/HistoryScreen';
-import { ArrivalPassScreen } from '../screens/user/ArrivalPassScreen';
 import { MapScreen } from '../screens/user/MapScreen';
+import { ScanBayScreen } from '../screens/user/ScanBayScreen';
 import { NavigateScreen } from '../screens/user/NavigateScreen';
 import { NotificationsScreen } from '../screens/user/NotificationsScreen';
 import { ProfileScreen } from '../screens/user/ProfileScreen';
@@ -30,8 +28,6 @@ import type {
   AdminStackParamList,
   AdminTabParamList,
   AuthStackParamList,
-  ReceptionistStackParamList,
-  ReceptionistTabParamList,
   UserStackParamList,
   UserTabParamList,
 } from './types';
@@ -39,10 +35,8 @@ import type {
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const UserStack = createNativeStackNavigator<UserStackParamList>();
 const AdminStack = createNativeStackNavigator<AdminStackParamList>();
-const ReceptionistStack = createNativeStackNavigator<ReceptionistStackParamList>();
 const UserTabs = createBottomTabNavigator<UserTabParamList>();
 const AdminTabs = createBottomTabNavigator<AdminTabParamList>();
-const ReceptionistTabs = createBottomTabNavigator<ReceptionistTabParamList>();
 
 function AuthNavigator() {
   return (
@@ -165,10 +159,10 @@ function UserNavigator() {
         }}
       />
       <UserStack.Screen
-        name="ArrivalPass"
-        component={ArrivalPassScreen}
+        name="ScanBay"
+        component={ScanBayScreen}
         options={{
-          title: 'Arrival pass',
+          title: 'Scan bay QR',
           headerBackTitle: 'Map',
           contentStyle: { backgroundColor: colors.background },
         }}
@@ -308,124 +302,16 @@ function AdminNavigator() {
           contentStyle: { backgroundColor: colors.background },
         }}
       />
+      <AdminStack.Screen
+        name="BayQr"
+        component={AdminBayQrScreen}
+        options={{
+          title: 'Bay QR',
+          headerBackTitle: 'Slots',
+          contentStyle: { backgroundColor: colors.background },
+        }}
+      />
     </AdminStack.Navigator>
-  );
-}
-
-function ReceptionistTabNavigator() {
-  const { colors } = useTheme();
-
-  const tabOptions = useMemo(
-    () => ({
-      headerShown: false,
-      lazy: true,
-      freezeOnBlur: true,
-      tabBarActiveTintColor: colors.tabActiveText,
-      tabBarInactiveTintColor: colors.tabInactive,
-      tabBarHideOnKeyboard: true,
-      sceneContainerStyle: { backgroundColor: colors.background },
-      tabBarStyle: {
-        backgroundColor: colors.background,
-        borderTopWidth: 0,
-        elevation: 0,
-        shadowOpacity: 0,
-      },
-      tabBar: (props: BottomTabBarProps) => <FloatingTabBar {...props} />,
-    }),
-    [colors],
-  );
-
-  return (
-    <ReceptionistTabs.Navigator screenOptions={tabOptions}>
-      <ReceptionistTabs.Screen
-        name="ScanTab"
-        component={ReceptionistScanScreen}
-        options={{
-          title: 'Scan',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons
-              name={focused ? 'qr-code' : 'qr-code-outline'}
-              color={color}
-              size={size}
-              accessibilityElementsHidden
-            />
-          ),
-        }}
-      />
-      <ReceptionistTabs.Screen
-        name="ArrivalsTab"
-        component={ReceptionistArrivalsScreen}
-        options={{
-          title: 'Arrivals',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons
-              name={focused ? 'people' : 'people-outline'}
-              color={color}
-              size={size}
-              accessibilityElementsHidden
-            />
-          ),
-        }}
-      />
-      <ReceptionistTabs.Screen
-        name="ProfileTab"
-        component={ProfileScreen}
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons
-              name={focused ? 'person' : 'person-outline'}
-              color={color}
-              size={size}
-              accessibilityElementsHidden
-            />
-          ),
-        }}
-      />
-    </ReceptionistTabs.Navigator>
-  );
-}
-
-function ReceptionistNavigator() {
-  const { colors } = useTheme();
-
-  return (
-    <ReceptionistStack.Navigator
-      screenOptions={{
-        headerTintColor: colors.primaryDark,
-        headerTitleStyle: { fontWeight: '700', color: colors.text },
-        headerShadowVisible: false,
-        headerStyle: { backgroundColor: colors.background },
-        animation: 'slide_from_right',
-      }}
-    >
-      <ReceptionistStack.Screen
-        name="ReceptionistTabs"
-        component={ReceptionistTabNavigator}
-        options={{ headerShown: false }}
-      />
-      <ReceptionistStack.Screen
-        name="PassDetail"
-        component={ReceptionistPassScreen}
-        options={{
-          title: 'Arrival check',
-          headerBackTitle: 'Back',
-          contentStyle: { backgroundColor: colors.background },
-        }}
-      />
-      <ReceptionistStack.Screen
-        name="Alerts"
-        component={NotificationsScreen}
-        options={{
-          title: '',
-          headerBackTitle: 'Back',
-          headerTransparent: true,
-          headerShadowVisible: false,
-          headerStyle: { backgroundColor: 'transparent' },
-          contentStyle: { backgroundColor: colors.background },
-        }}
-      />
-    </ReceptionistStack.Navigator>
   );
 }
 
@@ -434,9 +320,6 @@ function SignedInNavigator() {
   const profile = useAuthStore((state) => state.profile);
   if (profile?.role === 'admin') {
     return <AdminNavigator />;
-  }
-  if (profile?.role === 'receptionist') {
-    return <ReceptionistNavigator />;
   }
   return <UserNavigator />;
 }

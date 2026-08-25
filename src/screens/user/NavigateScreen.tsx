@@ -479,7 +479,9 @@ export function NavigateScreen({ navigation, route }: Props) {
       return 'You’re parked here. Drive away and uncover the IR sensor to end the session.';
     }
     if (arrived) {
-      return 'Park in the bay. Covering the IR sensor starts your session — no extra tap.';
+      return slot.holdCheckIn === 'admitted'
+        ? 'Park in the bay. Covering the IR sensor starts your session — no extra tap.'
+        : 'Scan the QR on this stall, then cover the IR sensor to start your session.';
     }
     if (guiding) {
       return remainingSteps > 1
@@ -490,7 +492,9 @@ export function NavigateScreen({ navigation, route }: Props) {
       return 'This space was taken by someone else. Go back and pick an open pin.';
     }
     if (headingHere) {
-      return 'This bay is held for you. Show the arrival QR at reception, then cover the IR sensor when you park.';
+      return slot.holdCheckIn === 'admitted'
+        ? 'You’re checked in. Cover the IR sensor when you park to start the session.'
+        : 'This bay is held for you. Scan the QR on the stall, then cover the IR sensor when you park.';
     }
     return 'Start guidance for turn-by-turn directions to this space.';
   })();
@@ -674,11 +678,11 @@ export function NavigateScreen({ navigation, route }: Props) {
         <View style={styles.actions}>
           {flowStep === 'drive' ? (
             <>
-              {headingHere ? (
+              {headingHere && slot.holdCheckIn !== 'admitted' ? (
                 <Button
-                  title="Show arrival QR"
+                  title="Scan bay QR"
                   variant="secondary"
-                  onPress={() => navigation.navigate('ArrivalPass', { slot })}
+                  onPress={() => navigation.navigate('ScanBay', { slot })}
                 />
               ) : null}
               <Button

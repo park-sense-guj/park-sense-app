@@ -1,32 +1,54 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useIsFocused, useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useIsFocused } from '@react-navigation/native';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useMemo, useRef, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button } from '../../components/Button';
 import { Screen } from '../../components/Screen';
 import { TextField } from '../../components/TextField';
-import type { ReceptionistStackParamList } from '../../navigation/types';
-import { playErrorFeedback, playSelectionFeedback } from '../../services/feedbackService';
-import { parsePassQr } from '../../services/parkingPassService';
+import { useParkingSlots } from '../../hooks/useParkingSlots';
+import type { UserStackParamList } from '../../navigation/types';
+import { playErrorFeedback, playSelectionFeedback, playSuccessFeedback } from '../../services/feedbackService';
+import { readableNetworkError } from '../../services/networkService';
+import { resolveScannedBay } from '../../services/parkingBayQrService';
+import { checkInAtBay } from '../../services/parkingHoldService';
+import { useAuthStore } from '../../store/authStore';
 import { useConnectivityStore } from '../../store/connectivityStore';
 import { useTheme } from '../../theme/ThemeProvider';
 
-export function ReceptionistScanScreen() {
+type Props = NativeStackScreenProps<UserStackParamList, 'ScanBay'>;
+
+export function ScanBayScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
-  const navigation = useNavigation<NativeStackNavigationProp<ReceptionistStackParamList>>();
+  const expected = route.params.slot;
   const insets = useSafeAreaInsets();
   const focused = useIsFocused();
   const isOnline = useConnectivityStore((state) => state.isOnline);
+  const profile = useAuthStore((state) => state.profile);
+  const { slots } = useParkingSlots();
   const [permission, requestPermission] = useCameraPermissions();
   const [torch, setTorch] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const [manualValue, setManualValue] = useState('');
   const [manualError, setManualError] = useState('');
+  const [checking, setChecking] = useState(false);
   const lock = useRef(false);
+
+  const liveExpected = slots.find((item) => item.slotId === expected.slotId) ?? expected;
+  const alreadyIn =
+    liveExpected.holdCheckIn === 'admitted' && liveExpected.heldByUserId === profile?.userId;
 
   const styles = useMemo(
     () =>
@@ -37,7 +59,7 @@ export function ReceptionistScanScreen() {
           ...StyleSheet.absoluteFill,
           justifyContent: 'space-between',
           paddingTop: insets.top + 16,
-          paddingBottom: Math.max(insets.bottom, 16) + 88,
+          paddingBottom: Math.max(insets.bottom, 16) + 24,
           paddingHorizontal: 20,
         },
         copy: { gap: 6 },
@@ -97,17 +119,26 @@ export function ReceptionistScanScreen() {
     [colors, insets.bottom, insets.top],
   );
 
-  function openPass(raw: string) {
-    if (lock.current) {
+  function finishCheckIn(slotNumber: string) {
+    playSuccessFeedback();
+    Alert.alert(
+      'Checked in',
+      `${slotNumber} is yours. Cover the IR sensor to start your session.`,
+      [{ text: 'OK', onPress: () => navigation.navigate('Navigate', { slot: liveExpected }) }],
+    );
+  }
+
+  async function handleScan(raw: string) {
+    if (lock.current || checking || !profile) {
       return;
     }
-    const token = parsePassQr(raw);
-    if (!token) {
+    const bay = resolveScannedBay(raw, slots.length > 0 ? slots : [liveExpected]);
+    if (!bay) {
       lock.current = true;
       playErrorFeedback();
       Alert.alert(
-        'Not a ParkSense pass',
-        'Ask the driver to open the arrival QR in the app. Screenshots of old codes will not work.',
+        'Not a ParkSense bay',
+        'Point the camera at the printed QR on this stall. You can also type the code if the sticker is damaged.',
         [{ text: 'OK', onPress: () => { lock.current = false; } }],
       );
       return;
@@ -115,29 +146,73 @@ export function ReceptionistScanScreen() {
     if (!isOnline) {
       lock.current = true;
       playErrorFeedback();
-      Alert.alert('You’re offline', 'Reconnect to verify whether this pass is genuine.', [
+      Alert.alert('You’re offline', 'Reconnect to check in at this bay.', [
         { text: 'OK', onPress: () => { lock.current = false; } },
       ]);
       return;
     }
+
     lock.current = true;
+    setChecking(true);
     playSelectionFeedback();
-    navigation.navigate('PassDetail', { token });
-    setTimeout(() => {
+    try {
+      const checked = await checkInAtBay(
+        profile.userId,
+        profile.fullName,
+        bay.slotId,
+        liveExpected.slotId,
+      );
+      finishCheckIn(checked.slotNumber);
+    } catch (error) {
+      playErrorFeedback();
+      Alert.alert('Could not check in', readableNetworkError(error, 'Try scanning again.'));
       lock.current = false;
-    }, 1200);
+    } finally {
+      setChecking(false);
+    }
   }
 
   function submitManual() {
     setManualError('');
-    const token = parsePassQr(manualValue);
-    if (!token) {
-      setManualError('Enter the pass token from the driver’s screen.');
+    const bay = resolveScannedBay(manualValue, slots.length > 0 ? slots : [liveExpected]);
+    if (!bay) {
+      setManualError('Enter the bay code printed under the QR, such as parksense:bay:slot-a-01.');
       return;
     }
     setManualOpen(false);
     setManualValue('');
-    openPass(token);
+    void handleScan(bay.slotId);
+  }
+
+  function manualModal() {
+    return (
+      <Modal visible={manualOpen} transparent animationType="slide" onRequestClose={() => setManualOpen(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
+          <Pressable style={styles.modalRoot} onPress={() => setManualOpen(false)}>
+            <Pressable style={styles.modalCard} onPress={() => undefined}>
+              <Text style={styles.modalTitle}>Enter bay code</Text>
+              <Text style={styles.modalHint}>
+                Type the payload printed under the sticker, or the stall number (for example A-01).
+              </Text>
+              <TextField
+                label="Bay code"
+                value={manualValue}
+                onChangeText={(value) => {
+                  setManualValue(value);
+                  setManualError('');
+                }}
+                autoCapitalize="none"
+                autoCorrect={false}
+                error={manualError}
+                placeholder="parksense:bay:slot-a-01"
+              />
+              <Button title="Check in" onPress={submitManual} />
+              <Button title="Cancel" variant="secondary" onPress={() => setManualOpen(false)} />
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Modal>
+    );
   }
 
   if (!permission) {
@@ -154,45 +229,14 @@ export function ReceptionistScanScreen() {
         <View style={styles.fallback}>
           <Text style={styles.fallbackTitle}>Camera access</Text>
           <Text style={styles.fallbackBody}>
-            Reception needs the camera to scan arrival QR codes. You can also type a pass token if
-            the camera is unavailable.
+            ParkSense needs the camera to scan the QR on bay {liveExpected.slotNumber}. You can
+            also type the code if the camera is unavailable.
           </Text>
           <Button title="Allow camera" onPress={() => void requestPermission()} />
-          <Button title="Enter pass token" variant="secondary" onPress={() => setManualOpen(true)} />
+          <Button title="Type bay code" variant="secondary" onPress={() => setManualOpen(true)} />
         </View>
         {manualModal()}
       </Screen>
-    );
-  }
-
-  function manualModal() {
-    return (
-      <Modal visible={manualOpen} transparent animationType="slide" onRequestClose={() => setManualOpen(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
-          <Pressable style={styles.modalRoot} onPress={() => setManualOpen(false)}>
-            <Pressable style={styles.modalCard} onPress={() => undefined}>
-              <Text style={styles.modalTitle}>Enter pass token</Text>
-              <Text style={styles.modalHint}>
-                Type or paste the code from the driver’s arrival screen if the camera cannot scan.
-              </Text>
-              <TextField
-                label="Pass token"
-                value={manualValue}
-                onChangeText={(value) => {
-                  setManualValue(value);
-                  setManualError('');
-                }}
-                autoCapitalize="none"
-                autoCorrect={false}
-                error={manualError}
-                placeholder="parksense:pass:…"
-              />
-              <Button title="Check pass" onPress={submitManual} />
-              <Button title="Cancel" variant="secondary" onPress={() => setManualOpen(false)} />
-            </Pressable>
-          </Pressable>
-        </KeyboardAvoidingView>
-      </Modal>
     );
   }
 
@@ -204,18 +248,20 @@ export function ReceptionistScanScreen() {
           facing="back"
           enableTorch={torch}
           barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-          onBarcodeScanned={({ data }) => openPass(data)}
+          onBarcodeScanned={({ data }) => void handleScan(data)}
         />
       ) : (
         <View style={[styles.camera, { backgroundColor: '#0B1412' }]} />
       )}
       <View style={styles.overlay} pointerEvents="box-none">
         <View style={styles.copy}>
-          <Text style={styles.title}>Scan arrival</Text>
+          <Text style={styles.title}>Scan {liveExpected.slotNumber}</Text>
           <Text style={styles.subtitle}>
-            {isOnline
-              ? 'Point the camera at the driver’s live ParkSense QR. Confirm the person matches the pass before admitting.'
-              : 'You’re offline. Reconnect before scanning — passes cannot be verified without Firebase.'}
+            {alreadyIn
+              ? 'You’re already checked in here. Cover the IR sensor when you park.'
+              : isOnline
+                ? `Point the camera at the printed QR on stall ${liveExpected.slotNumber}.`
+                : 'You’re offline. Reconnect before scanning — check-in needs Firebase.'}
           </Text>
         </View>
         <View style={styles.frameWrap} pointerEvents="none">
@@ -234,7 +280,7 @@ export function ReceptionistScanScreen() {
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Enter pass token"
+              accessibilityLabel="Enter bay code"
               onPress={() => setManualOpen(true)}
               style={styles.chip}
             >

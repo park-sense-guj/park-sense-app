@@ -10,7 +10,7 @@ import { GlassCard } from '../../components/GlassCard';
 import { Screen } from '../../components/Screen';
 import { StatusBadge } from '../../components/StatusBadge';
 import { useNotifications } from '../../hooks/useNotifications';
-import type { AdminStackParamList, ReceptionistStackParamList, UserStackParamList } from '../../navigation/types';
+import type { AdminStackParamList, UserStackParamList } from '../../navigation/types';
 import {
   markAllNotificationsRead,
   markNotificationRead,
@@ -19,9 +19,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useTheme } from '../../theme/ThemeProvider';
 import type { AppNotification } from '../../types';
 
-type StackNav = NativeStackNavigationProp<
-  UserStackParamList & AdminStackParamList & ReceptionistStackParamList
->;
+type StackNav = NativeStackNavigationProp<UserStackParamList & AdminStackParamList>;
 
 export function NotificationsScreen() {
   const { colors } = useTheme();
@@ -29,7 +27,6 @@ export function NotificationsScreen() {
   const navigation = useNavigation<StackNav>();
   const profile = useAuthStore((state) => state.profile);
   const isAdmin = profile?.role === 'admin';
-  const isReceptionist = profile?.role === 'receptionist';
   const { items, unreadCount } = useNotifications(profile?.userId);
   const [markingAll, setMarkingAll] = useState(false);
   const headerOffset = insets.top + 44;
@@ -165,20 +162,6 @@ export function NotificationsScreen() {
       );
       return;
     }
-    if (isReceptionist) {
-      navigation.dispatch(
-        CommonActions.reset({
-          index: 0,
-          routes: [
-            {
-              name: 'ReceptionistTabs',
-              params: { screen: 'ScanTab' },
-            },
-          ],
-        }),
-      );
-      return;
-    }
     navigation.dispatch(
       CommonActions.reset({
         index: 0,
@@ -239,13 +222,9 @@ export function NotificationsScreen() {
             ? unreadCount > 0
               ? `${unreadCount} unread · sensor health and lot updates`
               : 'Sensor offline and restore notices land here'
-            : isReceptionist
-              ? unreadCount > 0
-                ? `${unreadCount} unread · arrival updates`
-                : 'Driver arrival notices land here'
-              : unreadCount > 0
-                ? `${unreadCount} unread · tap an alert to mark it read`
-                : 'Lot availability and parking updates land here'}
+            : unreadCount > 0
+              ? `${unreadCount} unread · tap an alert to mark it read`
+              : 'Lot availability and parking updates land here'}
         </Text>
 
         <GlassCard style={styles.summary}>
@@ -273,13 +252,13 @@ export function NotificationsScreen() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={
-                  isAdmin ? 'Open Dashboard' : isReceptionist ? 'Open scanner' : 'Open Home'
+                  isAdmin ? 'Open Dashboard' : 'Open Home'
                 }
                 onPress={returnToHome}
                 style={styles.mapLink}
               >
                 <Text style={styles.mapLinkText}>
-                  {isAdmin ? 'Open Dashboard' : isReceptionist ? 'Open scanner' : 'Open Home'}
+                  {isAdmin ? 'Open Dashboard' : 'Open Home'}
                 </Text>
               </Pressable>
               {isAdmin ? (
@@ -324,7 +303,7 @@ export function NotificationsScreen() {
                 ? 'Mark a sensor faulty on the Sensors tab to create an admin alert.'
                 : 'On Home, tap a red pin and choose Watch lot. We’ll notify you when a space opens.'
             }
-            actionLabel={isAdmin ? 'Open Sensors' : isReceptionist ? 'Open scanner' : 'Open Home'}
+            actionLabel={isAdmin ? 'Open Sensors' : 'Open Home'}
             onAction={isAdmin ? openSensors : returnToHome}
           />
         }

@@ -1,17 +1,21 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useMemo } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { EmptyState } from '../../components/EmptyState';
 import { GlassCard } from '../../components/GlassCard';
 import { Screen } from '../../components/Screen';
 import { StatusBadge } from '../../components/StatusBadge';
 import { useParkingSlots } from '../../hooks/useParkingSlots';
+import type { AdminStackParamList } from '../../navigation/types';
 import { holdIsLive } from '../../services/parkingHoldService';
 import { useTheme } from '../../theme/ThemeProvider';
 
 export function AdminSlotsScreen() {
   const { colors } = useTheme();
+  const navigation = useNavigation<NativeStackNavigationProp<AdminStackParamList>>();
   const { slots, stats, loading, isSensorFaulty, sensorForSlot } = useParkingSlots();
   const offlineCount = stats.offlineSensors;
 
@@ -87,7 +91,7 @@ export function AdminSlotsScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>Slots</Text>
         <Text style={styles.subtitle}>
-          Live occupancy from the ESP32 IR sensors. Held bays are reserved for a driver heading there.
+          Live occupancy from the ESP32 IR sensors. Tap a bay to print its QR sticker.
         </Text>
       </View>
 
@@ -126,6 +130,11 @@ export function AdminSlotsScreen() {
           const open = item.status === 'Available';
           const sensor = sensorForSlot(item.slotId);
           return (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Show QR sticker for ${item.slotNumber}`}
+              onPress={() => navigation.navigate('BayQr', { slot: item })}
+            >
             <GlassCard style={styles.card}>
               <View
                 style={[
@@ -195,6 +204,7 @@ export function AdminSlotsScreen() {
                 </Text>
               </View>
             </GlassCard>
+            </Pressable>
           );
         }}
       />

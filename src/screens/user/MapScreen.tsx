@@ -41,7 +41,6 @@ export function MapScreen() {
   const isOnline = useConnectivityStore((state) => state.isOnline);
   const fullName = useAuthStore((state) => state.profile?.fullName);
   const photoUrl = useAuthStore((state) => state.profile?.photoUrl);
-  const userEmail = useAuthStore((state) => state.profile?.email);
   const userId = useAuthStore((state) => state.profile?.userId);
   const preferredLocation = useAuthStore((state) => state.profile?.preferredLocation);
   const { unreadCount } = useNotifications(userId);
@@ -334,12 +333,9 @@ export function MapScreen() {
     }
     setHolding(true);
     try {
-      await holdBay(userId, fullName, slot.slotId, {
-        email: userEmail,
-        photoUrl,
-      });
+      await holdBay(userId, fullName, slot.slotId);
       playSuccessFeedback();
-      navigation.navigate('ArrivalPass', { slot });
+      navigation.navigate('Navigate', { slot });
     } catch (error) {
       playErrorFeedback();
       Alert.alert('Could not hold this bay', readableNetworkError(error, 'Pick another open pin.'));
@@ -406,12 +402,18 @@ export function MapScreen() {
         }
         if (selectedKind === 'heldMine') {
           return {
-            hint: 'This bay is held for you. Show the arrival QR at reception, then cover the IR sensor when you park.',
-            primaryTitle: 'Show QR pass',
+            hint:
+              selected.holdCheckIn === 'admitted'
+                ? 'You’re checked in. Cover the IR sensor when you park to start your session.'
+                : 'This bay is held for you. Scan the QR on the stall, then cover the IR sensor when you park.',
+            primaryTitle: selected.holdCheckIn === 'admitted' ? 'Open navigation' : 'Scan bay QR',
             primaryVariant: 'primary' as const,
             primaryLoading: false,
             primaryDisabled: releasingHold,
-            onPrimary: () => navigation.navigate('ArrivalPass', { slot: selected }),
+            onPrimary: () =>
+              navigation.navigate(selected.holdCheckIn === 'admitted' ? 'Navigate' : 'ScanBay', {
+                slot: selected,
+              }),
             secondaryTitle: 'End hold',
             secondaryVariant: 'danger' as const,
             secondaryLoading: releasingHold,
@@ -421,7 +423,7 @@ export function MapScreen() {
         }
         if (selectedKind === 'open') {
           return {
-            hint: 'This space is free. Go there to hold it, then cover the IR sensor to start your session.',
+            hint: 'This space is free. Go there to hold it, then scan the bay QR and cover the IR sensor.',
             primaryTitle: 'Go there',
             primaryVariant: 'primary' as const,
             primaryLoading: holding,

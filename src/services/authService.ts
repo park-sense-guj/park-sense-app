@@ -27,9 +27,6 @@ function roleForEmail(email: string): UserRole {
   if (normalized === env.adminEmail) {
     return 'admin';
   }
-  if (env.receptionistEmails.includes(normalized)) {
-    return 'receptionist';
-  }
   return 'user';
 }
 
@@ -124,7 +121,15 @@ export function listenUserProfile(
   return onValue(
     profileRef,
     (snapshot) => {
-      onChange((snapshot.val() as UserProfile | null) ?? null);
+      const value = snapshot.val() as (UserProfile & { role?: string }) | null;
+      if (!value) {
+        onChange(null);
+        return;
+      }
+      onChange({
+        ...value,
+        role: value.role === 'admin' ? 'admin' : 'user',
+      });
     },
     (error) => {
       onError?.(error.message || 'Could not load your profile.');
@@ -141,7 +146,7 @@ export async function ensureUserProfile(params: {
   const profileRef = ref(getFirebaseDatabase(), `users/${params.userId}`);
   const snapshot = await get(profileRef);
   if (snapshot.exists()) {
-    const existing = snapshot.val() as UserProfile;
+    const existing = snapshot.val() as UserProfile & { role?: string };
     const patch: Partial<UserProfile> = {};
     if (!existing.photoUrl && params.photoUrl) {
       patch.photoUrl = params.photoUrl;
@@ -156,11 +161,14 @@ export async function ensureUserProfile(params: {
     if (existing.role !== nextRole && nextRole !== 'user') {
       patch.role = nextRole;
     }
+    const merged = { ...existing, ...patch };
     if (Object.keys(patch).length > 0) {
       await update(profileRef, patch);
-      return { ...existing, ...patch };
     }
-    return existing;
+    return {
+      ...merged,
+      role: merged.role === 'admin' ? 'admin' : 'user',
+    };
   }
   const profile: UserProfile = {
     userId: params.userId,

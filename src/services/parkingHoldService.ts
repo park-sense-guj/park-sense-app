@@ -1,16 +1,13 @@
-import { get, ref, runTransaction, set, update } from 'firebase/database';
+import { get, ref, runTransaction, update } from 'firebase/database';
 
 import { getFirebaseDatabase } from '../config/firebase';
-import type { BayKind, ParkingPass, ParkingSlot } from '../types';
+import type { BayKind, ParkingSlot } from '../types';
 import { assertOnline, withNetworkTimeout } from './networkService';
 
 /** How long “Go there” holds an empty bay for this driver. */
 export const HOLD_MS = 8 * 60 * 1000;
-
-export type HoldIdentity = {
-  email?: string;
-  photoUrl?: string;
-};
+/** Extra time to park after scanning the bay QR. */
+export const CHECK_IN_GRACE_MS = 5 * 60 * 1000;
 
 export function holdIsLive(slot: ParkingSlot, now = Date.now()): boolean {
   return Boolean(slot.heldByUserId) && (slot.heldUntil ?? 0) > now;
@@ -95,37 +92,6 @@ function holdClearPatch(slotId: string): Record<string, null> {
   };
 }
 
-async function cancelPassTokens(tokens: string[], status: 'cancelled' | 'denied'): Promise<void> {
-  const unique = [...new Set(tokens.filter(Boolean))];
-  if (unique.length === 0) {
-    return;
-  }
-  const db = getFirebaseDatabase();
-  const now = Date.now();
-  const patch: Record<string, string | number> = {};
-  for (const token of unique) {
-    const snap = await get(ref(db, `parkingPasses/${token}`));
-    if (!snap.exists()) {
-      continue;
-    }
-    const current = snap.val() as ParkingPass;
-    if (current.status === 'consumed' || current.status === 'denied') {
-      continue;
-    }
-    patch[`parkingPasses/${token}/status`] = status;
-    if (status === 'cancelled') {
-      patch[`parkingPasses/${token}/cancelledAt`] = now;
-    }
-  }
-  if (Object.keys(patch).length > 0) {
-    await update(ref(db), patch);
-  }
-}
-
-async function writePass(pass: ParkingPass): Promise<void> {
-  await set(ref(getFirebaseDatabase(), `parkingPasses/${pass.token}`), pass);
-}
-
 async function releaseOtherHolds(userId: string, exceptSlotId: string): Promise<void> {
   const snapshot = await get(ref(getFirebaseDatabase(), 'parkingSlots'));
   const value = snapshot.val() as Record<string, Omit<ParkingSlot, 'slotId'>> | null;
@@ -133,32 +99,22 @@ async function releaseOtherHolds(userId: string, exceptSlotId: string): Promise<
     return;
   }
   const patch: Record<string, null> = {};
-  const tokens: string[] = [];
   for (const [slotId, slot] of Object.entries(value)) {
     if (slotId === exceptSlotId || slot.heldByUserId !== userId) {
       continue;
     }
     Object.assign(patch, holdClearPatch(slotId));
-    if (slot.holdToken) {
-      tokens.push(slot.holdToken);
-    }
   }
   if (Object.keys(patch).length > 0) {
     await update(ref(getFirebaseDatabase()), patch);
   }
-  await cancelPassTokens(tokens, 'cancelled');
 }
 
 export async function releaseHoldsForUser(userId: string): Promise<void> {
   await releaseOtherHolds(userId, '');
 }
 
-export async function holdBay(
-  userId: string,
-  fullName: string,
-  slotId: string,
-  identity?: HoldIdentity,
-): Promise<string> {
+export async function holdBay(userId: string, fullName: string, slotId: string): Promise<string> {
   assertOnline('hold this bay');
 
   return withNetworkTimeout(
@@ -166,10 +122,8 @@ export async function holdBay(
       await releaseOtherHolds(userId, slotId);
 
       const token = createHoldToken();
-      const issuedAt = Date.now();
-      const expiresAt = issuedAt + HOLD_MS;
+      const expiresAt = Date.now() + HOLD_MS;
       const slotRef = ref(getFirebaseDatabase(), `parkingSlots/${slotId}`);
-      let previousToken: string | undefined;
       const result = await runTransaction(slotRef, (current) => {
         if (!current) {
           return current;
@@ -185,10 +139,6 @@ export async function holdBay(
         if (heldByOther) {
           return;
         }
-        previousToken =
-          typeof current.holdToken === 'string' && current.holdToken !== token
-            ? current.holdToken
-            : undefined;
         const next = {
           ...current,
           heldByUserId: userId,
@@ -208,41 +158,6 @@ export async function holdBay(
         throw new Error('That bay is no longer free. Pick another open pin.');
       }
 
-      const pass: ParkingPass = {
-        token,
-        slotId,
-        slotNumber: held.slotNumber,
-        locationName: held.locationName,
-        userId,
-        userName: fullName,
-        issuedAt,
-        expiresAt,
-        status: 'issued',
-      };
-      const email = identity?.email?.trim().toLowerCase();
-      if (email) {
-        pass.userEmail = email;
-      }
-      if (identity?.photoUrl) {
-        pass.photoUrl = identity.photoUrl;
-      }
-
-      try {
-        await writePass(pass);
-      } catch (error) {
-        await runTransaction(slotRef, (current) => {
-          if (!current || current.holdToken !== token) {
-            return current;
-          }
-          return clearHoldFields(current);
-        });
-        throw error;
-      }
-
-      if (previousToken) {
-        await cancelPassTokens([previousToken], 'cancelled');
-      }
-
       return token;
     })(),
     15_000,
@@ -250,33 +165,103 @@ export async function holdBay(
   );
 }
 
-export async function ensureHoldPass(
+export async function checkInAtBay(
   userId: string,
   fullName: string,
-  slotId: string,
-  identity?: HoldIdentity,
-): Promise<string> {
-  const slotRef = ref(getFirebaseDatabase(), `parkingSlots/${slotId}`);
-  const snapshot = await get(slotRef);
-  if (!snapshot.exists()) {
-    throw new Error('That bay was not found.');
-  }
-  const slot = snapshot.val() as Omit<ParkingSlot, 'slotId'>;
-  if (!holdIsLive({ ...slot, slotId }) || slot.heldByUserId !== userId) {
-    throw new Error('This bay is not held for you anymore.');
-  }
-  if (slot.holdToken) {
-    const passSnap = await get(ref(getFirebaseDatabase(), `parkingPasses/${slot.holdToken}`));
-    if (passSnap.exists()) {
-      return slot.holdToken;
-    }
-  }
-  return holdBay(userId, fullName, slotId, identity);
+  scannedSlotId: string,
+  expectedSlotId?: string,
+): Promise<ParkingSlot> {
+  assertOnline('check in at this bay');
+
+  return withNetworkTimeout(
+    (async () => {
+      const db = getFirebaseDatabase();
+      const scannedRef = ref(db, `parkingSlots/${scannedSlotId}`);
+      const scannedSnap = await get(scannedRef);
+      if (!scannedSnap.exists()) {
+        throw new Error('That QR is not linked to a ParkSense bay.');
+      }
+      const scanned = scannedSnap.val() as Omit<ParkingSlot, 'slotId'>;
+
+      if (expectedSlotId && expectedSlotId !== scannedSlotId) {
+        const expectedSnap = await get(ref(db, `parkingSlots/${expectedSlotId}`));
+        const expectedNumber =
+          (expectedSnap.val() as Omit<ParkingSlot, 'slotId'> | null)?.slotNumber ?? expectedSlotId;
+        throw new Error(
+          `That QR is for ${scanned.slotNumber}. Scan the sticker on ${expectedNumber}.`,
+        );
+      }
+
+      const occupiedByOther =
+        scanned.status === 'Occupied' &&
+        scanned.occupiedByUserId &&
+        scanned.occupiedByUserId !== userId;
+      if (occupiedByOther) {
+        throw new Error(`${scanned.slotNumber} is already taken.`);
+      }
+
+      const until = Number(scanned.heldUntil ?? 0);
+      const heldByOther =
+        Boolean(scanned.heldByUserId) &&
+        scanned.heldByUserId !== userId &&
+        until > Date.now();
+      if (heldByOther) {
+        throw new Error(`${scanned.slotNumber} is held for another driver.`);
+      }
+
+      await releaseOtherHolds(userId, scannedSlotId);
+
+      const now = Date.now();
+      const result = await runTransaction(scannedRef, (current) => {
+        if (!current) {
+          return current;
+        }
+
+        const liveUntil = Number(current.heldUntil ?? 0);
+        const liveHold = Boolean(current.heldByUserId) && liveUntil > now;
+        if (liveHold && current.heldByUserId !== userId) {
+          return;
+        }
+        if (
+          current.status === 'Occupied' &&
+          current.occupiedByUserId &&
+          current.occupiedByUserId !== userId
+        ) {
+          return;
+        }
+
+        const keepUntil = liveHold && current.heldByUserId === userId ? liveUntil : 0;
+        const heldUntil = Math.max(now + CHECK_IN_GRACE_MS, keepUntil);
+        return {
+          ...current,
+          heldByUserId: userId,
+          heldByName: fullName,
+          heldUntil,
+          holdToken:
+            typeof current.holdToken === 'string' && current.holdToken
+              ? current.holdToken
+              : createHoldToken(),
+          holdCheckIn: 'admitted' as const,
+          checkedInAt: now,
+          checkedInBy: userId,
+          checkedInByName: fullName,
+        };
+      });
+
+      const checked = result.snapshot.val() as Omit<ParkingSlot, 'slotId'> | null;
+      if (!result.committed || checked?.heldByUserId !== userId || checked.holdCheckIn !== 'admitted') {
+        throw new Error('Could not check in at this bay. It may have just been taken.');
+      }
+
+      return { ...checked, slotId: scannedSlotId };
+    })(),
+    15_000,
+    'Checking in is taking too long. Check your connection and try again.',
+  );
 }
 
 export async function releaseHold(userId: string, slotId: string): Promise<void> {
   const slotRef = ref(getFirebaseDatabase(), `parkingSlots/${slotId}`);
-  let releasedToken: string | undefined;
   await runTransaction(slotRef, (current) => {
     if (!current) {
       return current;
@@ -284,10 +269,6 @@ export async function releaseHold(userId: string, slotId: string): Promise<void>
     if (current.heldByUserId && current.heldByUserId !== userId) {
       return;
     }
-    releasedToken = typeof current.holdToken === 'string' ? current.holdToken : undefined;
     return clearHoldFields(current);
   });
-  if (releasedToken) {
-    await cancelPassTokens([releasedToken], 'cancelled');
-  }
 }

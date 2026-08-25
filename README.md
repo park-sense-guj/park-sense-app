@@ -49,11 +49,10 @@ Register normally in the app.
 
 - Driver: any email
 - Admin: register `admin@parksense.app` (see `EXPO_PUBLIC_ADMIN_EMAIL`)
-- Receptionist: register `receptionist@parksense.app` (see `EXPO_PUBLIC_RECEPTIONIST_EMAIL`)
 
 Open the admin **Dashboard** and tap **Seed demo lot if empty**. Green/red pins appear on the user map. Toggle slots on the **Slots** tab to simulate an ESP32.
 
-A receptionist signs in to a dedicated portal: **Scan** a driver’s arrival QR, then **Admit** or **Deny**. Incoming holds also appear on **Arrivals**.
+Each stall has a printed bay QR. Admins can open **Slots**, tap a bay, and print or share that sticker. Drivers scan it on arrival to check in.
 
 ## Google Maps keys
 
@@ -99,20 +98,19 @@ Paste `database.rules.json` into **Realtime Database → Rules → Publish** bef
 - Let only **admins** write sensors
 - Nest history and notifications under each `userId`
 - Store lot watchers under `lotWatchers` so freeing a space can notify drivers without scanning all users
-- Prevent drivers from promoting themselves to admin or receptionist (those roles are only valid for `admin@parksense.app` / `receptionist@parksense.app` on create)
-- Store arrival QR passes under `parkingPasses` so reception can verify a hold without reading other drivers’ full profiles
+- Prevent drivers from promoting themselves to admin (that role is only valid for `admin@parksense.app` on create)
 
 After changing `database.rules.json`, paste it into **Realtime Database → Rules → Publish**. After adding `expo-camera`, rebuild the native app (`pnpm ios` / `pnpm android`) so the scanner is available.
 
 **Software-only parking loop (no hardware):**
 
-1. Tap a **green** pin → **Go there** → show the **arrival QR** at reception
-2. Reception scans the code, confirms the driver, and admits or denies
+1. Tap a **green** pin → **Go there** → drive to the stall
+2. **Scan the printed bay QR** to check in
 3. Cover the IR sensor (or simulate Occupied) — pin turns red, open/taken updates
 4. Leave the bay — pin turns green again
 5. Tap a **red** pin → **Watch lot** — get an alert when that lot frees a space
 
-If you change `EXPO_PUBLIC_ADMIN_EMAIL` or `EXPO_PUBLIC_RECEPTIONIST_EMAIL`, update the matching email strings inside `database.rules.json` to match.
+If you change `EXPO_PUBLIC_ADMIN_EMAIL`, update the matching email string inside `database.rules.json` to match.
 
 Password reset and account deletion are available in the app (Login → Forgot password; Profile → Delete account).
 

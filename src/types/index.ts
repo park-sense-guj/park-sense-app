@@ -1,8 +1,6 @@
-export type UserRole = 'user' | 'admin' | 'receptionist';
+export type UserRole = 'user' | 'admin';
 
-export type HoldCheckIn = 'pending' | 'admitted' | 'denied';
-
-export type ParkingPassStatus = 'issued' | 'admitted' | 'denied' | 'cancelled' | 'consumed';
+export type HoldCheckIn = 'pending' | 'admitted';
 
 export type SlotStatus = 'Available' | 'Occupied';
 
@@ -38,29 +36,6 @@ export type ParkingSlot = {
   occupiedByUserId?: string;
   occupiedByName?: string;
   occupiedByRole?: UserRole;
-};
-
-export type ParkingPass = {
-  token: string;
-  slotId: string;
-  slotNumber: string;
-  locationName: string;
-  userId: string;
-  userName: string;
-  userEmail?: string;
-  photoUrl?: string;
-  issuedAt: number;
-  expiresAt: number;
-  status: ParkingPassStatus;
-  admittedAt?: number;
-  admittedBy?: string;
-  admittedByName?: string;
-  deniedAt?: number;
-  deniedBy?: string;
-  deniedByName?: string;
-  denyReason?: string;
-  cancelledAt?: number;
-  consumedAt?: number;
 };
 
 export type BayKind = 'offline' | 'mine' | 'heldMine' | 'held' | 'open' | 'taken';
